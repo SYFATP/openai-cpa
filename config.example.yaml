@@ -12,6 +12,7 @@ email_api_mode: "cloudflare_temp_email"
 # 你的域名 (支持逗号分隔多域名随机轮换) 如果只有一个域名就只填一个域名
 
 mail_domains: "domain1.com,domain2.xyz,domain3.net"
+enable_mail_domain_runtime_control: false
 mail_domain_fail_threshold: 3
 mail_domain_fail_cooldown_sec: 600
 mail_domain_success_threshold: 10

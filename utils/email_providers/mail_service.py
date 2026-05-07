@@ -118,7 +118,9 @@ def _normalize_main_domain(domain: str) -> str:
 
 def is_mail_domain_runtime_control_enabled(mode: str | None = None) -> bool:
     current_mode = str(mode or getattr(cfg, 'EMAIL_API_MODE', '') or '').strip()
-    return current_mode in {"cloudflare_temp_email", "freemail", "cloudmail", "openai_cpa"}
+    if current_mode not in {"cloudflare_temp_email", "freemail", "cloudmail", "openai_cpa"}:
+        return False
+    return bool(getattr(cfg, 'ENABLE_MAIL_DOMAIN_RUNTIME_CONTROL', False))
 
 
 def start_mail_domain_runtime_tracking() -> None:

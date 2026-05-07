@@ -76,7 +76,7 @@ createApp({
             config: null,
             mailDomainRuntimeStats: [],
             mailDomainRuntimeStatsError: '',
-            mailDomainRuntimePanelCollapsed: false,
+            mailDomainRuntimePanelCollapsed: normalizeBooleanLike(localStorage.getItem('mail_domain_runtime_panel_collapsed'), false),
             mailDomainRuntimeLastFetchAt: 0,
             blacklistStr: "",
             warpListStr: "",
@@ -373,7 +373,13 @@ createApp({
         },
         async initApp() {
             await this.fetchConfig();
-            await this.fetchMailDomainRuntimeStats();
+            if (this.config?.enable_mail_domain_runtime_control) {
+                await this.fetchMailDomainRuntimeStats();
+            } else {
+                this.mailDomainRuntimeStats = [];
+                this.mailDomainRuntimeStatsError = '';
+                this.mailDomainRuntimeLastFetchAt = 0;
+            }
             this.initSSE();
             this.fetchAccounts();
             this.fetchCloudAccounts();
@@ -423,6 +429,7 @@ createApp({
                 if (
                     this.currentTab === 'email' &&
                     this.isRunning &&
+                    this.config?.enable_mail_domain_runtime_control &&
                     !this.mailDomainRuntimePanelCollapsed &&
                     Date.now() - this.mailDomainRuntimeLastFetchAt >= 3000
                 ) {
@@ -615,6 +622,8 @@ createApp({
                 if (this.config.cluster_node_name === undefined) this.config.cluster_node_name = '';
                 if (this.config.cluster_master_url === undefined) this.config.cluster_master_url = '';
                 if (this.config.cluster_secret === undefined) this.config.cluster_secret = 'wenfxl666';
+                if (this.config.enable_mail_domain_runtime_control === undefined) this.config.enable_mail_domain_runtime_control = false;
+                this.config.enable_mail_domain_runtime_control = normalizeBooleanLike(this.config.enable_mail_domain_runtime_control, false);
                 if (this.config.mail_domain_fail_threshold === undefined) this.config.mail_domain_fail_threshold = 3;
                 if (this.config.mail_domain_fail_cooldown_sec === undefined) this.config.mail_domain_fail_cooldown_sec = 600;
                 if (this.config.mail_domain_success_threshold === undefined) this.config.mail_domain_success_threshold = 10;
@@ -623,6 +632,12 @@ createApp({
         },
         async fetchMailDomainRuntimeStats(options = {}) {
             const { silent = false } = options;
+            if (!this.config?.enable_mail_domain_runtime_control) {
+                this.mailDomainRuntimeStats = [];
+                this.mailDomainRuntimeStatsError = '';
+                this.mailDomainRuntimeLastFetchAt = 0;
+                return;
+            }
             try {
                 const res = await this.authFetch('/api/config/mail_domain_runtime_stats');
                 const data = await res.json();
@@ -645,6 +660,7 @@ createApp({
         },
         toggleMailDomainRuntimePanel() {
             this.mailDomainRuntimePanelCollapsed = !this.mailDomainRuntimePanelCollapsed;
+            localStorage.setItem('mail_domain_runtime_panel_collapsed', this.mailDomainRuntimePanelCollapsed ? 'true' : 'false');
         },
         formatMailDomainCooldownReason(reason) {
             if (reason === 'fail_limit') return '丢弃阈值';
@@ -732,6 +748,12 @@ createApp({
                     if (maxLen < minLen) maxLen = minLen;
                     this.config.local_microsoft.suffix_len_min = minLen;
                     this.config.local_microsoft.suffix_len_max = maxLen;
+                }
+                this.config.enable_mail_domain_runtime_control = normalizeBooleanLike(this.config.enable_mail_domain_runtime_control, false);
+                if (!this.config.enable_mail_domain_runtime_control) {
+                    this.mailDomainRuntimeStats = [];
+                    this.mailDomainRuntimeStatsError = '';
+                    this.mailDomainRuntimeLastFetchAt = 0;
                 }
                 this.config.mail_domain_fail_threshold = Math.max(0, parseInt(this.config.mail_domain_fail_threshold, 10) || 0);
                 this.config.mail_domain_fail_cooldown_sec = Math.max(0, parseInt(this.config.mail_domain_fail_cooldown_sec, 10) || 0);
