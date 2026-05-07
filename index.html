@@ -847,7 +847,7 @@
 
                                 <div class="mt-5 grid grid-cols-1 md:grid-cols-2 gap-4">
                                     <div>
-                                        <label class="block text-slate-700 text-xs font-black mb-2 uppercase tracking-wider">丢弃暂停阈值</label>
+                                        <label class="block text-slate-700 text-xs font-black mb-2 uppercase tracking-wider">丢弃冷却阈值</label>
                                         <input type="number" min="0" v-model.number="config.mail_domain_fail_threshold"
                                                class="w-full appearance-none bg-white border border-slate-200 text-slate-700 rounded-lg py-2.5 px-3 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-colors shadow-sm"
                                                placeholder="例如 3">
@@ -861,7 +861,7 @@
                                         <p class="text-[11px] text-slate-400 mt-2 font-medium">丢弃阈值触发后，该主域名暂停使用的冷却时长。</p>
                                     </div>
                                     <div>
-                                        <label class="block text-slate-700 text-xs font-black mb-2 uppercase tracking-wider">成功暂停阈值</label>
+                                        <label class="block text-slate-700 text-xs font-black mb-2 uppercase tracking-wider">成功冷却阈值</label>
                                         <input type="number" min="0" v-model.number="config.mail_domain_success_threshold"
                                                class="w-full appearance-none bg-white border border-slate-200 text-slate-700 rounded-lg py-2.5 px-3 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-colors shadow-sm"
                                                placeholder="例如 10">
@@ -886,7 +886,7 @@
                                         <div class="flex items-center gap-2 flex-wrap justify-end">
                                             <button @click="toggleMailDomainRuntimePanel" type="button" class="px-3 py-2 text-xs font-black rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-100 transition-colors shadow-sm">{{ mailDomainRuntimePanelCollapsed ? '展开状态' : '隐藏状态' }}</button>
                                             <button @click="fetchMailDomainRuntimeStats" type="button" class="px-3 py-2 text-xs font-black rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-100 transition-colors shadow-sm">刷新状态</button>
-                                            <button @click="clearMailDomainRuntimeStats" type="button" class="px-3 py-2 text-xs font-black rounded-lg border border-rose-200 bg-white text-rose-600 hover:bg-rose-50 transition-colors shadow-sm">清空计数器</button>
+                                            <button @click="clearMailDomainRuntimeStats" type="button" class="px-3 py-2 text-xs font-black rounded-lg border border-rose-200 bg-white text-rose-600 hover:bg-rose-50 transition-colors shadow-sm">清空状态</button>
                                         </div>
                                     </div>
                                     <div v-show="!mailDomainRuntimePanelCollapsed">
