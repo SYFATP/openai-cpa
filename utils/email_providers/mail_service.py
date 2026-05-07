@@ -51,6 +51,11 @@ empty_lock = threading.Lock()
 _CM_TOKEN_CACHE: Optional[str] = None
 _DOMAIN_RUNTIME_LOCK = threading.Lock()
 _DOMAIN_RUNTIME_STATE = {}
+_DOMAIN_RUNTIME_SESSION = {
+    "counting_enabled": False,
+    "last_started_at": 0.0,
+    "last_stopped_at": 0.0,
+}
 
 _thread_data = threading.local()
 _orig_sleep = time.sleep
@@ -105,6 +110,56 @@ def is_mail_domain_runtime_control_enabled(mode: str | None = None) -> bool:
     return current_mode in {"cloudflare_temp_email", "freemail", "cloudmail", "openai_cpa"}
 
 
+def start_mail_domain_runtime_tracking() -> None:
+    if not is_mail_domain_runtime_control_enabled():
+        return
+    now = time.time()
+    with _DOMAIN_RUNTIME_LOCK:
+        _DOMAIN_RUNTIME_SESSION["counting_enabled"] = True
+        _DOMAIN_RUNTIME_SESSION["last_started_at"] = now
+        _DOMAIN_RUNTIME_SESSION["last_stopped_at"] = 0.0
+
+
+def stop_mail_domain_runtime_tracking() -> None:
+    now = time.time()
+    with _DOMAIN_RUNTIME_LOCK:
+        _DOMAIN_RUNTIME_SESSION["counting_enabled"] = False
+        _DOMAIN_RUNTIME_SESSION["last_stopped_at"] = now
+
+
+def clear_mail_domain_runtime_stats() -> None:
+    with _DOMAIN_RUNTIME_LOCK:
+        _DOMAIN_RUNTIME_STATE.clear()
+        _DOMAIN_RUNTIME_SESSION["counting_enabled"] = False
+        _DOMAIN_RUNTIME_SESSION["last_started_at"] = 0.0
+        _DOMAIN_RUNTIME_SESSION["last_stopped_at"] = 0.0
+
+
+def _is_mail_domain_runtime_tracking_active() -> bool:
+    return bool(_DOMAIN_RUNTIME_SESSION.get("counting_enabled"))
+
+
+def _new_domain_runtime_state() -> dict:
+    return {
+        "fail_count": 0,
+        "success_count": 0,
+        "cooldown_until": 0.0,
+        "cooldown_reason": "",
+        "last_used_at": 0.0,
+        "last_failure_at": 0.0,
+        "last_success_at": 0.0,
+    }
+
+
+def _prune_expired_domain_records(now: float) -> None:
+    expired_domains = [
+        domain for domain, state in _DOMAIN_RUNTIME_STATE.items()
+        if float(state.get("cooldown_until") or 0.0) > 0 and float(state.get("cooldown_until") or 0.0) <= now
+    ]
+    for domain in expired_domains:
+        _DOMAIN_RUNTIME_STATE.pop(domain, None)
+
+
 def _get_domain_state(domain: str) -> dict:
     now = time.time()
     normalized = _normalize_main_domain(domain)
@@ -112,19 +167,8 @@ def _get_domain_state(domain: str) -> dict:
         return {}
 
     with _DOMAIN_RUNTIME_LOCK:
-        state = _DOMAIN_RUNTIME_STATE.setdefault(normalized, {
-            "fail_count": 0,
-            "success_count": 0,
-            "cooldown_until": 0.0,
-            "cooldown_reason": "",
-            "last_used_at": 0.0,
-            "last_failure_at": 0.0,
-            "last_success_at": 0.0,
-        })
-        cooldown_until = float(state.get("cooldown_until") or 0.0)
-        if cooldown_until > 0 and cooldown_until <= now:
-            state["cooldown_until"] = 0.0
-            state["cooldown_reason"] = ""
+        _prune_expired_domain_records(now)
+        state = _DOMAIN_RUNTIME_STATE.setdefault(normalized, _new_domain_runtime_state())
         return dict(state)
 
 
@@ -138,24 +182,13 @@ def pick_available_main_domain(main_domains: list[str]) -> str | None:
     now = time.time()
 
     with _DOMAIN_RUNTIME_LOCK:
+        _prune_expired_domain_records(now)
         for domain in main_domains:
             normalized = _normalize_main_domain(domain)
             if not normalized:
                 continue
-            state = _DOMAIN_RUNTIME_STATE.setdefault(normalized, {
-                "fail_count": 0,
-                "success_count": 0,
-                "cooldown_until": 0.0,
-                "cooldown_reason": "",
-                "last_used_at": 0.0,
-                "last_failure_at": 0.0,
-                "last_success_at": 0.0,
-            })
+            state = _DOMAIN_RUNTIME_STATE.setdefault(normalized, _new_domain_runtime_state())
             cooldown_until = float(state.get("cooldown_until") or 0.0)
-            if cooldown_until > 0 and cooldown_until <= now:
-                state["cooldown_until"] = 0.0
-                state["cooldown_reason"] = ""
-                cooldown_until = 0.0
             if cooldown_until > now:
                 continue
             candidates.append(normalized)
@@ -168,71 +201,70 @@ def pick_available_main_domain(main_domains: list[str]) -> str | None:
         return selected
 
 
-def _apply_domain_cooldown(state: dict, reason: str, cooldown_sec: int, counter_key: str) -> None:
+def _apply_domain_cooldown(state: dict, reason: str, cooldown_sec: int, counter_key: str) -> float:
+    cooldown_until = time.time() + max(int(cooldown_sec or 0), 0)
     state[counter_key] = 0
     state["cooldown_reason"] = reason
-    state["cooldown_until"] = time.time() + max(int(cooldown_sec or 0), 0)
+    state["cooldown_until"] = cooldown_until
+    return cooldown_until
 
 
-
-def record_domain_failure(domain: str) -> None:
+def record_domain_failure(domain: str) -> dict:
     normalized = _normalize_main_domain(domain)
-    if not normalized or not is_mail_domain_runtime_control_enabled():
-        return
+    if not normalized or not is_mail_domain_runtime_control_enabled() or not _is_mail_domain_runtime_tracking_active():
+        return {}
 
     threshold = int(getattr(cfg, 'MAIL_DOMAIN_FAIL_THRESHOLD', 0) or 0)
     cooldown_sec = int(getattr(cfg, 'MAIL_DOMAIN_FAIL_COOLDOWN_SEC', 0) or 0)
     now = time.time()
 
     with _DOMAIN_RUNTIME_LOCK:
-        state = _DOMAIN_RUNTIME_STATE.setdefault(normalized, {
-            "fail_count": 0,
-            "success_count": 0,
-            "cooldown_until": 0.0,
-            "cooldown_reason": "",
-            "last_used_at": 0.0,
-            "last_failure_at": 0.0,
-            "last_success_at": 0.0,
-        })
-        cooldown_until = float(state.get("cooldown_until") or 0.0)
-        if cooldown_until > 0 and cooldown_until <= now:
-            state["cooldown_until"] = 0.0
-            state["cooldown_reason"] = ""
+        _prune_expired_domain_records(now)
+        state = _DOMAIN_RUNTIME_STATE.setdefault(normalized, _new_domain_runtime_state())
         state["fail_count"] = int(state.get("fail_count") or 0) + 1
         state["last_failure_at"] = now
+        cooldown_triggered = False
+        cooldown_until = float(state.get("cooldown_until") or 0.0)
         if threshold > 0 and state["fail_count"] >= threshold:
-            _apply_domain_cooldown(state, "fail_limit", cooldown_sec, "fail_count")
+            cooldown_until = _apply_domain_cooldown(state, "fail_limit", cooldown_sec, "fail_count")
+            cooldown_triggered = True
+        return {
+            "domain": normalized,
+            "fail_count": int(state.get("fail_count") or 0),
+            "success_count": int(state.get("success_count") or 0),
+            "cooldown_reason": str(state.get("cooldown_reason") or ""),
+            "cooldown_until": cooldown_until,
+            "cooldown_triggered": cooldown_triggered,
+        }
 
 
-
-def record_domain_success(domain: str) -> None:
+def record_domain_success(domain: str) -> dict:
     normalized = _normalize_main_domain(domain)
-    if not normalized or not is_mail_domain_runtime_control_enabled():
-        return
+    if not normalized or not is_mail_domain_runtime_control_enabled() or not _is_mail_domain_runtime_tracking_active():
+        return {}
 
     threshold = int(getattr(cfg, 'MAIL_DOMAIN_SUCCESS_THRESHOLD', 0) or 0)
     cooldown_sec = int(getattr(cfg, 'MAIL_DOMAIN_SUCCESS_COOLDOWN_SEC', 0) or 0)
     now = time.time()
 
     with _DOMAIN_RUNTIME_LOCK:
-        state = _DOMAIN_RUNTIME_STATE.setdefault(normalized, {
-            "fail_count": 0,
-            "success_count": 0,
-            "cooldown_until": 0.0,
-            "cooldown_reason": "",
-            "last_used_at": 0.0,
-            "last_failure_at": 0.0,
-            "last_success_at": 0.0,
-        })
-        cooldown_until = float(state.get("cooldown_until") or 0.0)
-        if cooldown_until > 0 and cooldown_until <= now:
-            state["cooldown_until"] = 0.0
-            state["cooldown_reason"] = ""
+        _prune_expired_domain_records(now)
+        state = _DOMAIN_RUNTIME_STATE.setdefault(normalized, _new_domain_runtime_state())
         state["success_count"] = int(state.get("success_count") or 0) + 1
         state["last_success_at"] = now
+        cooldown_triggered = False
+        cooldown_until = float(state.get("cooldown_until") or 0.0)
         if threshold > 0 and state["success_count"] >= threshold:
-            _apply_domain_cooldown(state, "success_limit", cooldown_sec, "success_count")
-
+            cooldown_until = _apply_domain_cooldown(state, "success_limit", cooldown_sec, "success_count")
+            cooldown_triggered = True
+        return {
+            "domain": normalized,
+            "fail_count": int(state.get("fail_count") or 0),
+            "success_count": int(state.get("success_count") or 0),
+            "cooldown_reason": str(state.get("cooldown_reason") or ""),
+            "cooldown_until": cooldown_until,
+            "cooldown_triggered": cooldown_triggered,
+        }
 
 
 def get_mail_domain_runtime_stats() -> list[dict]:
@@ -242,13 +274,10 @@ def get_mail_domain_runtime_stats() -> list[dict]:
     now = time.time()
     rows = []
     with _DOMAIN_RUNTIME_LOCK:
+        _prune_expired_domain_records(now)
         for domain in sorted(_DOMAIN_RUNTIME_STATE.keys()):
             state = _DOMAIN_RUNTIME_STATE[domain]
             cooldown_until = float(state.get("cooldown_until") or 0.0)
-            if cooldown_until > 0 and cooldown_until <= now:
-                state["cooldown_until"] = 0.0
-                state["cooldown_reason"] = ""
-                cooldown_until = 0.0
             rows.append({
                 "domain": domain,
                 "fail_count": int(state.get("fail_count") or 0),

@@ -122,6 +122,7 @@ async def start_task(token: str = Depends(verify_token)):
     default_proxy = getattr(core_engine.cfg, 'DEFAULT_PROXY', None)
     args = DummyArgs(proxy=default_proxy if default_proxy else None)
     core_engine.run_stats.update({"success": 0, "failed": 0, "retries": 0, "pwd_blocked": 0, "phone_verify": 0, "start_time": time.time(),"target": 0})
+    mail_service.start_mail_domain_runtime_tracking()
     if getattr(core_engine.cfg, 'ENABLE_CPA_MODE', False):
         engine.start_cpa(args)
         return {"status": "success", "message": "启动成功：已自动识别并开启 [CPA 智能仓管模式]"}
@@ -156,6 +157,7 @@ async def stop_task(token: str = Depends(verify_token)):
 
     asyncio.create_task(send_tg_msg_async(msg))
     engine.stop()
+    mail_service.stop_mail_domain_runtime_tracking()
     return {"status": "success", "message": "已发送停止指令，正在安全退出..."}
 
 
@@ -245,6 +247,12 @@ async def get_config(token: str = Depends(verify_token)):
 @router.get("/api/config/mail_domain_runtime_stats")
 async def get_mail_domain_runtime_stats(token: str = Depends(verify_token)):
     return {"status": "success", "items": mail_service.get_mail_domain_runtime_stats()}
+
+
+@router.post("/api/config/mail_domain_runtime_stats/clear")
+async def clear_mail_domain_runtime_stats(token: str = Depends(verify_token)):
+    mail_service.clear_mail_domain_runtime_stats()
+    return {"status": "success", "message": "域名运行时计数器已清空"}
 
 
 @router.post("/api/config")
@@ -558,12 +566,14 @@ def ext_reset_stats(token: str = Depends(verify_token)):
         "target": getattr(core_engine.cfg, 'NORMAL_TARGET_COUNT', 0),
         "ext_is_running": True
     })
+    mail_service.start_mail_domain_runtime_tracking()
     return {"status": "success"}
 
 @router.post("/api/ext/stop")
 def ext_stop(token: str = Depends(verify_token)):
     from utils import core_engine
     core_engine.run_stats["ext_is_running"] = False
+    mail_service.stop_mail_domain_runtime_tracking()
     return {"status": "success"}
 
 @router.get("/api/system/version")

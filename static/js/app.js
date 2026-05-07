@@ -75,6 +75,7 @@ createApp({
             logFlushTimer: null,
             config: null,
             mailDomainRuntimeStats: [],
+            mailDomainRuntimeStatsError: '',
             blacklistStr: "",
             warpListStr: "",
             rawProxyListStr: "",
@@ -607,9 +608,32 @@ createApp({
             try {
                 const res = await this.authFetch('/api/config/mail_domain_runtime_stats');
                 const data = await res.json();
-                this.mailDomainRuntimeStats = data.status === 'success' && Array.isArray(data.items) ? data.items : [];
+                if (data.status === 'success' && Array.isArray(data.items)) {
+                    this.mailDomainRuntimeStats = data.items;
+                    this.mailDomainRuntimeStatsError = '';
+                } else {
+                    this.mailDomainRuntimeStatsError = data.message || '域名运行时状态获取失败';
+                    this.showToast(this.mailDomainRuntimeStatsError, 'error');
+                }
             } catch (e) {
-                this.mailDomainRuntimeStats = [];
+                this.mailDomainRuntimeStatsError = '域名运行时状态获取失败，请检查后端接口或网络连接';
+                this.showToast(this.mailDomainRuntimeStatsError, 'error');
+            }
+        },
+        async clearMailDomainRuntimeStats() {
+            try {
+                const res = await this.authFetch('/api/config/mail_domain_runtime_stats/clear', { method: 'POST' });
+                const data = await res.json();
+                if (data.status === 'success') {
+                    this.mailDomainRuntimeStats = [];
+                    this.mailDomainRuntimeStatsError = '';
+                    this.showToast(data.message || '域名运行时计数器已清空', 'success');
+                    await this.fetchMailDomainRuntimeStats();
+                } else {
+                    this.showToast(data.message || '清空域名运行时计数器失败', 'error');
+                }
+            } catch (e) {
+                this.showToast('清空域名运行时计数器失败，请检查网络连接', 'error');
             }
         },
         async saveConfig() {
@@ -978,6 +1002,7 @@ createApp({
                     this.isRunning = true;
                     this.currentTab = 'console';
                     this.pollStats();
+                    await this.fetchMailDomainRuntimeStats();
                     this.showToast(`启动成功`, "success");
                 } else { this.showToast(data.message, "error"); }
             } catch (e) { this.showToast("启动请求发送失败", "error"); }
@@ -988,6 +1013,7 @@ createApp({
                 const data = await res.json();
                 this.showToast("任务已停止", "info");
                 this.isRunning = false;
+                await this.fetchMailDomainRuntimeStats();
                 const now = new Date();
                 const timeStr = now.toLocaleTimeString('zh-CN', { hour12: false }); // 获取如 14:30:05 格式
                 this.logs.push({
