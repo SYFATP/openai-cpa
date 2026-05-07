@@ -267,6 +267,83 @@ def record_domain_success(domain: str) -> dict:
         }
 
 
+def _build_domain_runtime_row(domain: str, state: dict, now: float) -> dict:
+    cooldown_until = float(state.get("cooldown_until") or 0.0)
+    return {
+        "domain": domain,
+        "fail_count": int(state.get("fail_count") or 0),
+        "success_count": int(state.get("success_count") or 0),
+        "cooldown_until": cooldown_until,
+        "cooldown_remaining_sec": max(0, int(cooldown_until - now)) if cooldown_until > now else 0,
+        "cooldown_reason": str(state.get("cooldown_reason") or ""),
+        "is_available": cooldown_until <= now,
+        "last_used_at": float(state.get("last_used_at") or 0.0),
+        "last_failure_at": float(state.get("last_failure_at") or 0.0),
+        "last_success_at": float(state.get("last_success_at") or 0.0),
+    }
+
+
+def _get_domain_runtime_row_locked(domain: str, now: float) -> dict:
+    state = _DOMAIN_RUNTIME_STATE.get(domain)
+    if not state:
+        return {}
+    return _build_domain_runtime_row(domain, state, now)
+
+
+def get_mail_domain_runtime_summary() -> dict:
+    if not is_mail_domain_runtime_control_enabled():
+        return {"total_count": 0, "available_count": 0, "cooldown_count": 0}
+
+    now = time.time()
+    with _DOMAIN_RUNTIME_LOCK:
+        _prune_expired_domain_records(now)
+        total_count = len(_DOMAIN_RUNTIME_STATE)
+        cooldown_count = sum(
+            1 for state in _DOMAIN_RUNTIME_STATE.values()
+            if float(state.get("cooldown_until") or 0.0) > now
+        )
+        available_count = max(0, total_count - cooldown_count)
+        return {
+            "total_count": total_count,
+            "available_count": available_count,
+            "cooldown_count": cooldown_count,
+        }
+
+
+def clear_mail_domain_runtime_domain_counters(domain: str) -> dict:
+    normalized = _normalize_main_domain(domain)
+    if not normalized or not is_mail_domain_runtime_control_enabled():
+        return {}
+
+    now = time.time()
+    with _DOMAIN_RUNTIME_LOCK:
+        _prune_expired_domain_records(now)
+        state = _DOMAIN_RUNTIME_STATE.get(normalized)
+        if not state:
+            return {}
+        state["fail_count"] = 0
+        state["success_count"] = 0
+        state["last_failure_at"] = 0.0
+        state["last_success_at"] = 0.0
+        return _get_domain_runtime_row_locked(normalized, now)
+
+
+def clear_mail_domain_runtime_domain_cooldown(domain: str) -> dict:
+    normalized = _normalize_main_domain(domain)
+    if not normalized or not is_mail_domain_runtime_control_enabled():
+        return {}
+
+    now = time.time()
+    with _DOMAIN_RUNTIME_LOCK:
+        _prune_expired_domain_records(now)
+        state = _DOMAIN_RUNTIME_STATE.get(normalized)
+        if not state:
+            return {}
+        state["cooldown_until"] = 0.0
+        state["cooldown_reason"] = ""
+        return _get_domain_runtime_row_locked(normalized, now)
+
+
 def get_mail_domain_runtime_stats() -> list[dict]:
     if not is_mail_domain_runtime_control_enabled():
         return []
@@ -277,19 +354,7 @@ def get_mail_domain_runtime_stats() -> list[dict]:
         _prune_expired_domain_records(now)
         for domain in sorted(_DOMAIN_RUNTIME_STATE.keys()):
             state = _DOMAIN_RUNTIME_STATE[domain]
-            cooldown_until = float(state.get("cooldown_until") or 0.0)
-            rows.append({
-                "domain": domain,
-                "fail_count": int(state.get("fail_count") or 0),
-                "success_count": int(state.get("success_count") or 0),
-                "cooldown_until": cooldown_until,
-                "cooldown_remaining_sec": max(0, int(cooldown_until - now)) if cooldown_until > now else 0,
-                "cooldown_reason": str(state.get("cooldown_reason") or ""),
-                "is_available": cooldown_until <= now,
-                "last_used_at": float(state.get("last_used_at") or 0.0),
-                "last_failure_at": float(state.get("last_failure_at") or 0.0),
-                "last_success_at": float(state.get("last_success_at") or 0.0),
-            })
+            rows.append(_build_domain_runtime_row(domain, state, now))
     return rows
 
 

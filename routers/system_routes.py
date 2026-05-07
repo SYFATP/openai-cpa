@@ -28,6 +28,7 @@ class DummyArgs:
         self.once = once
 
 class LoginData(BaseModel): password: str
+class DomainRuntimeActionReq(BaseModel): domain: str
 class ClusterUploadAccountsReq(BaseModel): node_name: str; secret: str; accounts: list
 class ClusterReportReq(BaseModel): node_name: str; secret: str; stats: dict; logs: list
 class ClusterControlReq(BaseModel): node_name: str; action: str
@@ -193,12 +194,16 @@ async def get_stats(token: str = Depends(verify_token)):
         current_mode = "CPA 仓管" if getattr(core_engine.cfg, 'ENABLE_CPA_MODE', False) else (
             "Sub2Api 仓管" if getattr(core_engine.cfg, 'ENABLE_SUB2API_MODE', False) else "常规量产")
 
+    domain_summary = mail_service.get_mail_domain_runtime_summary()
+
     return {
         "success": stats["success"], "failed": stats["failed"], "retries": stats["retries"],
         "pwd_blocked": stats.get("pwd_blocked", 0), "phone_verify": stats.get("phone_verify", 0),
         "total": total_attempts, "target": stats["target"] if stats["target"] > 0 else "∞",
         "success_rate": f"{success_rate}%", "elapsed": f"{elapsed}s", "avg_time": f"{avg_time}s",
-        "progress_pct": f"{progress_pct}%", "is_running": is_running, "mode": current_mode
+        "progress_pct": f"{progress_pct}%", "is_running": is_running, "mode": current_mode,
+        "available_count": domain_summary.get("available_count", 0),
+        "cooldown_count": domain_summary.get("cooldown_count", 0),
     }
 
 
@@ -253,6 +258,22 @@ async def get_mail_domain_runtime_stats(token: str = Depends(verify_token)):
 async def clear_mail_domain_runtime_stats(token: str = Depends(verify_token)):
     mail_service.clear_mail_domain_runtime_stats()
     return {"status": "success", "message": "域名运行时计数器已清空"}
+
+
+@router.post("/api/config/mail_domain_runtime_stats/clear_counters")
+async def clear_mail_domain_runtime_domain_counters(req: DomainRuntimeActionReq, token: str = Depends(verify_token)):
+    item = mail_service.clear_mail_domain_runtime_domain_counters(req.domain)
+    if not item:
+        return {"status": "error", "message": "未找到指定域名的运行时计数"}
+    return {"status": "success", "message": f"已清空 {item['domain']} 的计数", "item": item}
+
+
+@router.post("/api/config/mail_domain_runtime_stats/clear_cooldown")
+async def clear_mail_domain_runtime_domain_cooldown(req: DomainRuntimeActionReq, token: str = Depends(verify_token)):
+    item = mail_service.clear_mail_domain_runtime_domain_cooldown(req.domain)
+    if not item:
+        return {"status": "error", "message": "未找到指定域名的冷却状态"}
+    return {"status": "success", "message": f"已清除 {item['domain']} 的冷却", "item": item}
 
 
 @router.post("/api/config")

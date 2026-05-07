@@ -225,7 +225,11 @@
                         <span class="text-slate-300 hidden sm:inline">•</span>
                         <span class="text-slate-500 font-bold whitespace-nowrap">成功 <span class="text-emerald-500 font-black ml-0.5">{{stats.success}}/{{stats.target}}</span></span>
                         <span class="text-slate-300 hidden sm:inline">•</span>
-                        <span class="text-slate-500 font-bold whitespace-nowrap">失败 <span class="text-rose-500 font-black ml-0.5">{{stats.failed}}</span></span>
+                        <span class="text-slate-500 font-bold whitespace-nowrap">丢弃 <span class="text-rose-500 font-black ml-0.5">{{stats.failed}}</span></span>
+                        <span class="text-slate-300 hidden sm:inline">•</span>
+                        <span class="text-slate-500 font-bold whitespace-nowrap">可用域名 <span class="text-emerald-500 font-black ml-0.5">{{stats.available_count || 0}}</span></span>
+                        <span class="text-slate-300 hidden sm:inline">•</span>
+                        <span class="text-slate-500 font-bold whitespace-nowrap">冷却域名 <span class="text-amber-500 font-black ml-0.5">{{stats.cooldown_count || 0}}</span></span>
                         <span class="text-slate-300 hidden sm:inline">•</span>
                         <span class="text-slate-500 font-bold whitespace-nowrap">风控拦截 <span class="text-amber-500 font-black ml-0.5">{{stats.retries}}</span></span>
                         <span class="text-slate-300 hidden sm:inline">•</span>
@@ -843,18 +847,18 @@
 
                                 <div class="mt-5 grid grid-cols-1 md:grid-cols-2 gap-4">
                                     <div>
-                                        <label class="block text-slate-700 text-xs font-black mb-2 uppercase tracking-wider">失败暂停阈值</label>
+                                        <label class="block text-slate-700 text-xs font-black mb-2 uppercase tracking-wider">丢弃暂停阈值</label>
                                         <input type="number" min="0" v-model.number="config.mail_domain_fail_threshold"
                                                class="w-full appearance-none bg-white border border-slate-200 text-slate-700 rounded-lg py-2.5 px-3 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-colors shadow-sm"
                                                placeholder="例如 3">
-                                        <p class="text-[11px] text-slate-400 mt-2 font-medium">同一主域名本次运行累计失败达到该次数后暂停使用，0 表示关闭。</p>
+                                        <p class="text-[11px] text-slate-400 mt-2 font-medium">同一主域名本次运行累计丢弃达到该次数后暂停使用，0 表示关闭。</p>
                                     </div>
                                     <div>
-                                        <label class="block text-slate-700 text-xs font-black mb-2 uppercase tracking-wider">失败冷却秒数</label>
+                                        <label class="block text-slate-700 text-xs font-black mb-2 uppercase tracking-wider">丢弃冷却秒数</label>
                                         <input type="number" min="0" v-model.number="config.mail_domain_fail_cooldown_sec"
                                                class="w-full appearance-none bg-white border border-slate-200 text-slate-700 rounded-lg py-2.5 px-3 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-colors shadow-sm"
                                                placeholder="例如 600">
-                                        <p class="text-[11px] text-slate-400 mt-2 font-medium">失败阈值触发后，该主域名暂停使用的冷却时长。</p>
+                                        <p class="text-[11px] text-slate-400 mt-2 font-medium">丢弃阈值触发后，该主域名暂停使用的冷却时长。</p>
                                     </div>
                                     <div>
                                         <label class="block text-slate-700 text-xs font-black mb-2 uppercase tracking-wider">成功暂停阈值</label>
@@ -877,38 +881,46 @@
                                         <div>
                                             <h4 class="text-sm font-black text-slate-700">域名运行时状态</h4>
                                             <p class="text-[11px] text-slate-400 mt-1 font-medium">仅展示当前进程内的主域名计数与冷却状态，重启后会重新统计。</p>
+                                            <p class="text-[11px] text-slate-400 mt-1 font-medium">可用 {{ availableMailDomainCount }} / 冷却 {{ cooldownMailDomainCount }}</p>
                                         </div>
-                                        <div class="flex items-center gap-2">
+                                        <div class="flex items-center gap-2 flex-wrap justify-end">
+                                            <button @click="toggleMailDomainRuntimePanel" type="button" class="px-3 py-2 text-xs font-black rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-100 transition-colors shadow-sm">{{ mailDomainRuntimePanelCollapsed ? '展开状态' : '隐藏状态' }}</button>
                                             <button @click="fetchMailDomainRuntimeStats" type="button" class="px-3 py-2 text-xs font-black rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-100 transition-colors shadow-sm">刷新状态</button>
                                             <button @click="clearMailDomainRuntimeStats" type="button" class="px-3 py-2 text-xs font-black rounded-lg border border-rose-200 bg-white text-rose-600 hover:bg-rose-50 transition-colors shadow-sm">清空计数器</button>
                                         </div>
                                     </div>
-                                    <div v-if="mailDomainRuntimeStatsError" class="text-xs text-rose-500 font-medium bg-rose-50 border border-rose-200 rounded-xl px-4 py-4 mb-3">
-                                        {{ mailDomainRuntimeStatsError }}
-                                    </div>
-                                    <div v-if="mailDomainRuntimeStats.length > 0" class="space-y-3">
-                                        <div v-for="item in mailDomainRuntimeStats" :key="item.domain" class="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
-                                            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-3">
-                                                <div>
-                                                    <div class="text-sm font-black text-slate-800 break-all">{{ item.domain }}</div>
-                                                    <div class="text-[11px] text-slate-400 mt-1">
-                                                        最近使用: {{ item.last_used_at ? new Date(item.last_used_at * 1000).toLocaleString('zh-CN', { hour12: false }) : '未使用' }}
+                                    <div v-show="!mailDomainRuntimePanelCollapsed">
+                                        <div v-if="mailDomainRuntimeStatsError" class="text-xs text-rose-500 font-medium bg-rose-50 border border-rose-200 rounded-xl px-4 py-4 mb-3">
+                                            {{ mailDomainRuntimeStatsError }}
+                                        </div>
+                                        <div v-if="mailDomainRuntimeStats.length > 0" class="space-y-3">
+                                            <div v-for="item in mailDomainRuntimeStats" :key="item.domain" class="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+                                                <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-3">
+                                                    <div>
+                                                        <div class="text-sm font-black text-slate-800 break-all">{{ item.domain }}</div>
+                                                        <div class="text-[11px] text-slate-400 mt-1">
+                                                            最近使用: {{ item.last_used_at ? new Date(item.last_used_at * 1000).toLocaleString('zh-CN', { hour12: false }) : '未使用' }}
+                                                        </div>
+                                                    </div>
+                                                    <div class="flex items-center gap-2 flex-wrap justify-end">
+                                                        <button @click="clearMailDomainRuntimeRowCounters(item.domain)" type="button" class="px-3 py-1.5 text-[11px] font-black rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-100 transition-colors shadow-sm">清空计数</button>
+                                                        <button @click="clearMailDomainRuntimeRowCooldown(item.domain)" type="button" class="px-3 py-1.5 text-[11px] font-black rounded-lg border border-amber-200 bg-white text-amber-700 hover:bg-amber-50 transition-colors shadow-sm">清除冷却</button>
+                                                        <span :class="item.is_available ? 'bg-emerald-100 text-emerald-700 border-emerald-200' : 'bg-amber-100 text-amber-700 border-amber-200'" class="inline-flex items-center px-3 py-1 rounded-full text-[11px] font-black border w-max">
+                                                            {{ item.is_available ? '可用' : '冷却中' }}
+                                                        </span>
                                                     </div>
                                                 </div>
-                                                <span :class="item.is_available ? 'bg-emerald-100 text-emerald-700 border-emerald-200' : 'bg-amber-100 text-amber-700 border-amber-200'" class="inline-flex items-center px-3 py-1 rounded-full text-[11px] font-black border w-max">
-                                                    {{ item.is_available ? '可用' : '冷却中' }}
-                                                </span>
-                                            </div>
-                                            <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 text-xs font-bold text-slate-600">
-                                                <div class="bg-slate-50 rounded-lg px-3 py-2 border border-slate-100">失败计数: <span class="text-slate-800">{{ item.fail_count }}</span></div>
-                                                <div class="bg-slate-50 rounded-lg px-3 py-2 border border-slate-100">成功计数: <span class="text-slate-800">{{ item.success_count }}</span></div>
-                                                <div class="bg-slate-50 rounded-lg px-3 py-2 border border-slate-100">冷却原因: <span class="text-slate-800">{{ item.cooldown_reason || '无' }}</span></div>
-                                                <div class="bg-slate-50 rounded-lg px-3 py-2 border border-slate-100">剩余时间: <span class="text-slate-800">{{ formatDuration(item.cooldown_remaining_sec || 0) }}</span></div>
+                                                <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 text-xs font-bold text-slate-600">
+                                                    <div class="bg-slate-50 rounded-lg px-3 py-2 border border-slate-100">丢弃计数: <span class="text-slate-800">{{ item.fail_count }}</span></div>
+                                                    <div class="bg-slate-50 rounded-lg px-3 py-2 border border-slate-100">成功计数: <span class="text-slate-800">{{ item.success_count }}</span></div>
+                                                    <div class="bg-slate-50 rounded-lg px-3 py-2 border border-slate-100">冷却原因: <span class="text-slate-800">{{ formatMailDomainCooldownReason(item.cooldown_reason) }}</span></div>
+                                                    <div class="bg-slate-50 rounded-lg px-3 py-2 border border-slate-100">剩余时间: <span class="text-slate-800">{{ formatDuration(item.cooldown_remaining_sec || 0) }}</span></div>
+                                                </div>
                                             </div>
                                         </div>
-                                    </div>
-                                    <div v-else class="text-xs text-slate-400 font-medium bg-white border border-dashed border-slate-200 rounded-xl px-4 py-4">
-                                        当前还没有域名运行时统计数据，开始注册后这里会显示各主域名的成功/失败计数与冷却状态。
+                                        <div v-else class="text-xs text-slate-400 font-medium bg-white border border-dashed border-slate-200 rounded-xl px-4 py-4">
+                                            当前还没有域名运行时统计数据，开始注册后这里会显示各主域名的成功/丢弃计数与冷却状态。
+                                        </div>
                                     </div>
                                 </div>
 
