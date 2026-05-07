@@ -235,6 +235,15 @@ createApp({
         searchMailboxes() {
             this.mailboxPage = 1;
             this.fetchMailboxes();
+        },
+        'config.email_api_mode'(nextMode) {
+            const supportedModes = ['cloudflare_temp_email', 'freemail', 'cloudmail', 'openai_cpa'];
+            if (!supportedModes.includes(String(nextMode || '').trim())) {
+                this.config.enable_mail_domain_runtime_control = false;
+                this.mailDomainRuntimeStats = [];
+                this.mailDomainRuntimeStatsError = '';
+                this.mailDomainRuntimeLastFetchAt = 0;
+            }
         }
     },
     mounted() {
