@@ -108,6 +108,11 @@ def _normalize_main_domain(domain: str) -> str:
     text = str(domain or "").strip().lower().strip(".")
     if not text:
         return ""
+    if "@" in text:
+        _, text = text.rsplit("@", 1)
+        text = text.strip().strip(".")
+        if not text:
+            return ""
 
     configured = _get_configured_main_domains()
     for root in configured:

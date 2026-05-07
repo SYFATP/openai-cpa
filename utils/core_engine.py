@@ -636,7 +636,7 @@ def handle_registration_result(result: Any, cpa_upload: bool = False, run_ctx: d
                 if domain_result:
                     cooldown_text = _format_cooldown_time(domain_result.get("cooldown_until", 0.0))
                     extra_text = f"，冷却结束时间: {cooldown_text}" if cooldown_text else ""
-                    print(f"[{ts()}] [系统] 失败域名 {mask_email(domain_result.get('domain', cur_dom or ''))} -> 失败 {domain_result.get('fail_count', 0)} / 成功 {domain_result.get('success_count', 0)}{extra_text}")
+                    print(f"[{ts()}] [INFO] 失败域名 {mask_email(domain_result.get('domain', cur_dom or ''))} -> 失败 {domain_result.get('fail_count', 0)} / 成功 {domain_result.get('success_count', 0)}{extra_text}")
             ret_status = "failed"
         if cfg.ENABLE_SUB_DOMAINS:
             mail_service.clear_sticky_domain()
@@ -650,7 +650,7 @@ def handle_registration_result(result: Any, cpa_upload: bool = False, run_ctx: d
         if domain_result:
             cooldown_text = _format_cooldown_time(domain_result.get("cooldown_until", 0.0))
             extra_text = f"，冷却结束时间: {cooldown_text}" if cooldown_text else ""
-            print(f"[{ts()}] [系统] 成功域名 {mask_email(domain_result.get('domain', cur_dom or ''))} -> 失败 {domain_result.get('fail_count', 0)} / 成功 {domain_result.get('success_count', 0)}{extra_text}")
+            print(f"[{ts()}] [INFO] 成功域名 {mask_email(domain_result.get('domain', cur_dom or ''))} -> 失败 {domain_result.get('fail_count', 0)} / 成功 {domain_result.get('success_count', 0)}{extra_text}")
 
         # 存入本地数据库
         if cpa_upload:
