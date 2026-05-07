@@ -93,16 +93,27 @@ def set_last_email(email: str):
     _thread_data.last_attempt_email = email
 
 
+def _get_configured_main_domains() -> list[str]:
+    seen = set()
+    domains = []
+    for part in str(getattr(cfg, 'MAIL_DOMAINS', '') or '').split(','):
+        root = str(part or '').strip().lower().strip('.')
+        if root and root not in seen:
+            seen.add(root)
+            domains.append(root)
+    return domains
+
+
 def _normalize_main_domain(domain: str) -> str:
     text = str(domain or "").strip().lower().strip(".")
     if not text:
         return ""
 
-    configured = [d.strip().lower().strip('.') for d in str(getattr(cfg, 'MAIL_DOMAINS', '') or '').split(',') if d.strip()]
+    configured = _get_configured_main_domains()
     for root in configured:
         if text == root or text.endswith(f".{root}"):
             return root
-    return text
+    return text if not configured else ""
 
 
 def is_mail_domain_runtime_control_enabled(mode: str | None = None) -> bool:
@@ -295,13 +306,15 @@ def get_mail_domain_runtime_summary() -> dict:
         return {"total_count": 0, "available_count": 0, "cooldown_count": 0}
 
     now = time.time()
+    configured_domains = _get_configured_main_domains()
     with _DOMAIN_RUNTIME_LOCK:
         _prune_expired_domain_records(now)
-        total_count = len(_DOMAIN_RUNTIME_STATE)
-        cooldown_count = sum(
-            1 for state in _DOMAIN_RUNTIME_STATE.values()
+        cooldown_domains = {
+            domain for domain, state in _DOMAIN_RUNTIME_STATE.items()
             if float(state.get("cooldown_until") or 0.0) > now
-        )
+        }
+        total_count = len(configured_domains)
+        cooldown_count = sum(1 for domain in configured_domains if domain in cooldown_domains)
         available_count = max(0, total_count - cooldown_count)
         return {
             "total_count": total_count,
