@@ -864,14 +864,14 @@
                                     <div v-if="config.enable_mail_domain_runtime_control" class="border-t border-amber-100/60 pt-5 mt-2 space-y-5">
                                         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                                             <div>
-                                                <label class="block text-slate-700 text-xs font-black mb-2 uppercase tracking-wider">异常冷却阈值</label>
+                                                <label class="block text-slate-700 text-xs font-black mb-2 uppercase tracking-wider">冷却阈值</label>
                                                 <input type="number" min="0" v-model.number="config.mail_domain_fail_threshold"
                                                        class="w-full appearance-none bg-white border border-slate-200 text-slate-700 rounded-lg py-2.5 px-3 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-colors shadow-sm"
                                                        placeholder="例如 3">
                                                 <p class="text-[11px] text-slate-400 mt-2 font-medium">同一主域名本次运行累计异常达到该次数后暂停使用，0 表示关闭。</p>
                                             </div>
                                             <div>
-                                                <label class="block text-slate-700 text-xs font-black mb-2 uppercase tracking-wider">异常冷却秒数</label>
+                                                <label class="block text-slate-700 text-xs font-black mb-2 uppercase tracking-wider">冷却秒数</label>
                                                 <input type="number" min="0" v-model.number="config.mail_domain_fail_cooldown_sec"
                                                        class="w-full appearance-none bg-white border border-slate-200 text-slate-700 rounded-lg py-2.5 px-3 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-colors shadow-sm"
                                                        placeholder="例如 600">
@@ -916,10 +916,10 @@
                                                             </div>
                                                         </div>
                                                         <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 text-xs font-bold text-slate-600">
-                                                            <div class="bg-slate-50 rounded-lg px-3 py-2 border border-slate-100">异常计数: <span class="text-slate-800">{{ item.fail_count }}</span></div>
-                                                            <div class="bg-slate-50 rounded-lg px-3 py-2 border border-slate-100">成功计数: <span class="text-slate-800">{{ item.success_count }}</span></div>
-                                                            <div class="bg-slate-50 rounded-lg px-3 py-2 border border-slate-100">冷却原因: <span class="text-slate-800">{{ formatMailDomainCooldownReason(item.cooldown_reason) }}</span></div>
-                                                            <div class="bg-slate-50 rounded-lg px-3 py-2 border border-slate-100">剩余时间: <span class="text-slate-800">{{ formatDuration(item.cooldown_remaining_sec || 0) }}</span></div>
+                                                            <div class="bg-slate-50 rounded-lg px-3 py-2 border border-slate-100">异常: <span class="text-slate-800">{{ item.fail_count }}</span></div>
+                                                            <div class="bg-slate-50 rounded-lg px-3 py-2 border border-slate-100">成功: <span class="text-slate-800">{{ item.success_count }}</span></div>
+                                                            <div class="bg-slate-50 rounded-lg px-3 py-2 border border-slate-100">原因: <span class="text-slate-800">{{ formatMailDomainCooldownReason(item.cooldown_reason) }}</span></div>
+                                                            <div class="bg-slate-50 rounded-lg px-3 py-2 border border-slate-100">时间: <span class="text-slate-800">{{ formatDuration(item.cooldown_remaining_sec || 0) }}</span></div>
                                                         </div>
                                                     </div>
                                                 </div>
