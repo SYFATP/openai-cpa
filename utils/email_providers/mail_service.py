@@ -121,6 +121,28 @@ def _normalize_main_domain(domain: str) -> str:
     return text if not configured else ""
 
 
+def _get_disabled_main_domains() -> set[str]:
+    normalized = set()
+    for domain in getattr(cfg, 'DISABLED_MAIL_DOMAINS', []) or []:
+        root = _normalize_main_domain(domain)
+        if root:
+            normalized.add(root)
+    return normalized
+
+
+def _all_configured_main_domains_disabled() -> bool:
+    configured = _get_configured_main_domains()
+    if not configured:
+        return False
+    disabled = _get_disabled_main_domains()
+    return bool(disabled) and all(domain in disabled for domain in configured)
+
+
+def is_mail_domain_disabled(domain: str) -> bool:
+    normalized = _normalize_main_domain(domain)
+    return bool(normalized) and normalized in _get_disabled_main_domains()
+
+
 def is_mail_domain_runtime_control_enabled(mode: str | None = None) -> bool:
     current_mode = str(mode or getattr(cfg, 'EMAIL_API_MODE', '') or '').strip()
     if current_mode not in {"cloudflare_temp_email", "freemail", "cloudmail", "openai_cpa"}:
@@ -191,9 +213,10 @@ def _get_domain_state(domain: str) -> dict:
 
 
 def pick_available_main_domain(main_domains: list[str]) -> str | None:
+    disabled_domains = _get_disabled_main_domains()
     if not is_mail_domain_runtime_control_enabled():
         normalized_domains = [_normalize_main_domain(domain) for domain in main_domains]
-        candidates = [domain for domain in normalized_domains if domain]
+        candidates = [domain for domain in normalized_domains if domain and domain not in disabled_domains]
         return random.choice(candidates) if candidates else None
 
     candidates = []
@@ -203,7 +226,7 @@ def pick_available_main_domain(main_domains: list[str]) -> str | None:
         _prune_expired_domain_records(now)
         for domain in main_domains:
             normalized = _normalize_main_domain(domain)
-            if not normalized:
+            if not normalized or normalized in disabled_domains:
                 continue
             state = _DOMAIN_RUNTIME_STATE.setdefault(normalized, _new_domain_runtime_state())
             cooldown_until = float(state.get("cooldown_until") or 0.0)
@@ -296,6 +319,7 @@ def record_domain_success(domain: str) -> dict:
 
 def _build_domain_runtime_row(domain: str, state: dict, now: float) -> dict:
     cooldown_until = float(state.get("cooldown_until") or 0.0)
+    is_disabled = is_mail_domain_disabled(domain)
     return {
         "domain": domain,
         "fail_count": int(state.get("fail_count") or 0),
@@ -304,6 +328,8 @@ def _build_domain_runtime_row(domain: str, state: dict, now: float) -> dict:
         "cooldown_remaining_sec": max(0, int(cooldown_until - now)) if cooldown_until > now else 0,
         "cooldown_reason": str(state.get("cooldown_reason") or ""),
         "is_available": cooldown_until <= now,
+        "is_disabled": is_disabled,
+        "is_enabled": not is_disabled,
         "last_used_at": float(state.get("last_used_at") or 0.0),
         "last_failure_at": float(state.get("last_failure_at") or 0.0),
         "last_success_at": float(state.get("last_success_at") or 0.0),
@@ -855,7 +881,9 @@ def get_email_and_token(proxies: Any = None) -> tuple:
 
         selected_main = pick_available_main_domain(main_list)
         if not selected_main:
-            if use_domain_runtime_control:
+            if _all_configured_main_domains_disabled():
+                print(f"[{cfg.ts()}] [ERROR] 所有主域名均已被手动禁用，当前无法继续生成邮箱！")
+            elif use_domain_runtime_control:
                 print(f"[{cfg.ts()}] [ERROR] 所有主域名均处于冷却中，当前无法继续生成邮箱！")
             else:
                 print(f"[{cfg.ts()}] [ERROR] 未找到可用主域名，当前无法继续生成邮箱！")
@@ -885,7 +913,9 @@ def get_email_and_token(proxies: Any = None) -> tuple:
             return None, None
         selected_domain = pick_available_main_domain(domain_list)
         if not selected_domain:
-            if use_domain_runtime_control:
+            if _all_configured_main_domains_disabled():
+                print(f"[{cfg.ts()}] [ERROR] 所有主域名均已被手动禁用，当前无法继续生成邮箱！")
+            elif use_domain_runtime_control:
                 print(f"[{cfg.ts()}] [ERROR] 所有主域名均处于冷却中，当前无法继续生成邮箱！")
             else:
                 print(f"[{cfg.ts()}] [ERROR] 域名池配置为空或无有效主域名，无法生成邮箱！")

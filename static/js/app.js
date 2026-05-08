@@ -631,6 +631,12 @@ createApp({
                 if (this.config.cluster_node_name === undefined) this.config.cluster_node_name = '';
                 if (this.config.cluster_master_url === undefined) this.config.cluster_master_url = '';
                 if (this.config.cluster_secret === undefined) this.config.cluster_secret = 'wenfxl666';
+                if (!Array.isArray(this.config.disabled_mail_domains)) this.config.disabled_mail_domains = [];
+                this.config.disabled_mail_domains = [...new Set(
+                    this.config.disabled_mail_domains
+                        .map(item => String(item || '').trim().toLowerCase().replace(/^\.+|\.+$/g, ''))
+                        .filter(Boolean)
+                )];
                 if (this.config.enable_mail_domain_runtime_control === undefined) this.config.enable_mail_domain_runtime_control = false;
                 this.config.enable_mail_domain_runtime_control = normalizeBooleanLike(this.config.enable_mail_domain_runtime_control, false);
                 if (this.config.mail_domain_fail_threshold === undefined) this.config.mail_domain_fail_threshold = 3;
@@ -676,6 +682,25 @@ createApp({
         isMailDomainRuntimePristine(item) {
             if (!item || typeof item !== 'object') return false;
             return !item.last_used_at && !item.success_count && !item.fail_count && !(item.cooldown_remaining_sec > 0);
+        },
+        toggleMailDomainDisabled(domain) {
+            const normalized = String(domain || '').trim().toLowerCase().replace(/^\.+|\.+$/g, '');
+            if (!normalized) return;
+            if (!Array.isArray(this.config.disabled_mail_domains)) {
+                this.config.disabled_mail_domains = [];
+            }
+            const next = new Set(
+                this.config.disabled_mail_domains
+                    .map(item => String(item || '').trim().toLowerCase().replace(/^\.+|\.+$/g, ''))
+                    .filter(Boolean)
+            );
+            if (next.has(normalized)) {
+                next.delete(normalized);
+            } else {
+                next.add(normalized);
+            }
+            this.config.disabled_mail_domains = Array.from(next);
+            this.saveConfig();
         },
         async clearMailDomainRuntimeCooldowns() {
             try {
@@ -763,6 +788,14 @@ createApp({
                     this.mailDomainRuntimeStatsError = '';
                     this.mailDomainRuntimeLastFetchAt = 0;
                 }
+                if (!Array.isArray(this.config.disabled_mail_domains)) {
+                    this.config.disabled_mail_domains = [];
+                }
+                this.config.disabled_mail_domains = [...new Set(
+                    this.config.disabled_mail_domains
+                        .map(item => String(item || '').trim().toLowerCase().replace(/^\.+|\.+$/g, ''))
+                        .filter(Boolean)
+                )];
                 this.config.mail_domain_fail_threshold = Math.max(0, parseInt(this.config.mail_domain_fail_threshold, 10) || 0);
                 this.config.mail_domain_fail_cooldown_sec = Math.max(0, parseInt(this.config.mail_domain_fail_cooldown_sec, 10) || 0);
                 this.config.warp_proxy_list = this.warpListStr.split('\n').map(s => s.trim()).filter(s => s);

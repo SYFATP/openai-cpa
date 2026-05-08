@@ -882,7 +882,7 @@
                                         <div class="p-4 bg-slate-50 border border-slate-200 rounded-xl">
                                             <div class="flex items-center justify-between gap-3 mb-3">
                                                 <div>
-                                                    <h4 class="text-sm font-black text-slate-700">域名运行时状态</h4>
+                                                    <h4 class="text-sm font-black text-slate-700">域名列表</h4>
                                                     <p class="text-[11px] text-slate-400 mt-1 font-medium">仅展示当前进程内的主域名计数与冷却状态，重启后会重新统计。</p>
                                                     <p class="text-[11px] text-slate-400 mt-1 font-medium">可用 {{ availableMailDomainCount }} / 冷却 {{ cooldownMailDomainCount }}</p>
                                                 </div>
@@ -911,8 +911,14 @@
                                                                 </div>
                                                             </div>
                                                             <div class="flex items-center gap-2 flex-wrap justify-end">
+                                                                <button @click="toggleMailDomainDisabled(item.domain)" type="button" :class="item.is_disabled ? 'border-emerald-200 text-emerald-700 hover:bg-emerald-50' : 'border-rose-200 text-rose-600 hover:bg-rose-50'" class="px-3 py-1.5 text-[11px] font-black rounded-lg border bg-white transition-colors shadow-sm">
+                                                                    {{ item.is_disabled ? '启用' : '禁用' }}
+                                                                </button>
                                                                 <button @click="clearMailDomainRuntimeRowCounters(item.domain)" type="button" class="px-3 py-1.5 text-[11px] font-black rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-100 transition-colors shadow-sm">清空计数</button>
                                                                 <button @click="clearMailDomainRuntimeRowCooldown(item.domain)" type="button" class="px-3 py-1.5 text-[11px] font-black rounded-lg border border-amber-200 bg-white text-amber-700 hover:bg-amber-50 transition-colors shadow-sm">清除冷却</button>
+                                                                <span :class="item.is_disabled ? 'bg-slate-200 text-slate-700 border-slate-300' : 'bg-emerald-100 text-emerald-700 border-emerald-200'" class="inline-flex items-center px-3 py-1 rounded-full text-[11px] font-black border w-max">
+                                                                    {{ item.is_disabled ? '停用' : '启用' }}
+                                                                </span>
                                                                 <span :class="item.is_available ? 'bg-emerald-100 text-emerald-700 border-emerald-200' : 'bg-amber-100 text-amber-700 border-amber-200'" class="inline-flex items-center px-3 py-1 rounded-full text-[11px] font-black border w-max">
                                                                     {{ item.is_available ? '可用' : '冷却中' }}
                                                                 </span>
