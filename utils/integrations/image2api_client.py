@@ -52,7 +52,7 @@ class Image2APIClient:
         if not tokens:
             return False, "没有需要上传的 Token"
 
-        url = f"{self.api_url}/api/accounts"
+        url = f"{self.api_url}/api/accounts/import"
         payload = {
             "tokens": tokens
         }
