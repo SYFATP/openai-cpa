@@ -506,6 +506,7 @@ def get_mail_domain_runtime_stats() -> list[dict]:
     if not is_mail_domain_runtime_control_enabled():
         return []
 
+    sync_mail_domain_runtime_state_with_config()
     now = time.time()
     rows = []
     with _DOMAIN_RUNTIME_LOCK:
