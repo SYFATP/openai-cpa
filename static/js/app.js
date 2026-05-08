@@ -440,7 +440,7 @@ createApp({
                     this.isRunning &&
                     this.config?.enable_mail_domain_runtime_control &&
                     !this.mailDomainRuntimePanelCollapsed &&
-                    Date.now() - this.mailDomainRuntimeLastFetchAt >= 3000
+                    Date.now() - this.mailDomainRuntimeLastFetchAt >= 1000
                 ) {
                     this.fetchMailDomainRuntimeStats({ silent: true });
                 }
@@ -635,8 +635,6 @@ createApp({
                 this.config.enable_mail_domain_runtime_control = normalizeBooleanLike(this.config.enable_mail_domain_runtime_control, false);
                 if (this.config.mail_domain_fail_threshold === undefined) this.config.mail_domain_fail_threshold = 3;
                 if (this.config.mail_domain_fail_cooldown_sec === undefined) this.config.mail_domain_fail_cooldown_sec = 600;
-                if (this.config.mail_domain_success_threshold === undefined) this.config.mail_domain_success_threshold = 10;
-                if (this.config.mail_domain_success_cooldown_sec === undefined) this.config.mail_domain_success_cooldown_sec = 1800;
             } catch (e) {}
         },
         async fetchMailDomainRuntimeStats(options = {}) {
@@ -673,25 +671,22 @@ createApp({
         },
         formatMailDomainCooldownReason(reason) {
             if (reason === 'fail_limit') return '丢弃阈值';
-            if (reason === 'success_limit') return '成功阈值';
             return '无';
         },
-        async clearMailDomainRuntimeStats() {
+        async clearMailDomainRuntimeCooldowns() {
             try {
                 const res = await this.authFetch('/api/config/mail_domain_runtime_stats/clear', { method: 'POST' });
                 const data = await res.json();
                 if (data.status === 'success') {
-                    this.mailDomainRuntimeStats = [];
                     this.mailDomainRuntimeStatsError = '';
-                    this.mailDomainRuntimeLastFetchAt = Date.now();
-                    this.showToast(data.message || '域名运行时计数器已清空', 'success');
+                    this.showToast(data.message || '已清除全部域名冷却', 'success');
                     await this.fetchMailDomainRuntimeStats({ silent: true });
                     this.pollStats();
                 } else {
-                    this.showToast(data.message || '清空域名运行时计数器失败', 'error');
+                    this.showToast(data.message || '清除全部域名冷却失败', 'error');
                 }
             } catch (e) {
-                this.showToast('清空域名运行时计数器失败，请检查网络连接', 'error');
+                this.showToast('清除全部域名冷却失败，请检查网络连接', 'error');
             }
         },
         async clearMailDomainRuntimeRowCounters(domain) {
@@ -766,8 +761,6 @@ createApp({
                 }
                 this.config.mail_domain_fail_threshold = Math.max(0, parseInt(this.config.mail_domain_fail_threshold, 10) || 0);
                 this.config.mail_domain_fail_cooldown_sec = Math.max(0, parseInt(this.config.mail_domain_fail_cooldown_sec, 10) || 0);
-                this.config.mail_domain_success_threshold = Math.max(0, parseInt(this.config.mail_domain_success_threshold, 10) || 0);
-                this.config.mail_domain_success_cooldown_sec = Math.max(0, parseInt(this.config.mail_domain_success_cooldown_sec, 10) || 0);
                 this.config.warp_proxy_list = this.warpListStr.split('\n').map(s => s.trim()).filter(s => s);
                 if (!this.config.raw_proxy_pool || typeof this.config.raw_proxy_pool !== 'object' || Array.isArray(this.config.raw_proxy_pool)) {
                     this.config.raw_proxy_pool = { enable: false, proxy_list: [] };

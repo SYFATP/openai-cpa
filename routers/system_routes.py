@@ -256,8 +256,8 @@ async def get_mail_domain_runtime_stats(token: str = Depends(verify_token)):
 
 @router.post("/api/config/mail_domain_runtime_stats/clear")
 async def clear_mail_domain_runtime_stats(token: str = Depends(verify_token)):
-    mail_service.clear_mail_domain_runtime_stats()
-    return {"status": "success", "message": "域名运行时计数器已清空"}
+    cleared_count = mail_service.clear_all_mail_domain_runtime_cooldowns()
+    return {"status": "success", "message": f"已清除 {cleared_count} 个域名冷却"}
 
 
 @router.post("/api/config/mail_domain_runtime_stats/clear_counters")

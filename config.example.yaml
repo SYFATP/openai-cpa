@@ -15,8 +15,6 @@ mail_domains: "domain1.com,domain2.xyz,domain3.net"
 enable_mail_domain_runtime_control: false
 mail_domain_fail_threshold: 3
 mail_domain_fail_cooldown_sec: 600
-mail_domain_success_threshold: 10
-mail_domain_success_cooldown_sec: 1800
 
 #二级域名开关
 enable_sub_domains: false

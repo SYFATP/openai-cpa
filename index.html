@@ -850,7 +850,7 @@
                                         <div>
                                             <h4 class="text-sm font-black text-amber-600 tracking-wide">黄金矿工模式</h4>
                                             <p class="text-xs text-slate-500 mt-1 font-medium">开启后将对发信主域进行运行时计数与冷却调度。</p>
-                                            <p class="text-[11px] text-slate-400 mt-1">达到成功或丢弃阈值后会自动进入冷却，帮助持续筛选更耐用的域名池；关闭后恢复常规随机使用，不记录计数，也不触发冷却。</p>
+                                            <p class="text-[11px] text-slate-400 mt-1">达到丢弃阈值后会自动进入冷却，帮助持续筛选更耐用的域名池；关闭后恢复常规随机使用，不记录计数，也不触发冷却。</p>
                                             <p v-if="!['cloudflare_temp_email', 'freemail', 'cloudmail', 'openai_cpa'].includes(config.email_api_mode)" class="text-[11px] font-bold text-rose-600 mt-3 bg-rose-50 px-3 py-2 rounded-lg inline-block border border-rose-100 shadow-sm flex items-center gap-1.5">
                                                 <span><svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg></span> 当前模式不支持此功能！仅限 cloudflare_temp_email, freemail, cloudmail, openai_cpa。
                                             </p>
@@ -877,20 +877,6 @@
                                                        placeholder="例如 600">
                                                 <p class="text-[11px] text-slate-400 mt-2 font-medium">丢弃阈值触发后，该主域名暂停使用的冷却时长。</p>
                                             </div>
-                                            <div>
-                                                <label class="block text-slate-700 text-xs font-black mb-2 uppercase tracking-wider">成功冷却阈值</label>
-                                                <input type="number" min="0" v-model.number="config.mail_domain_success_threshold"
-                                                       class="w-full appearance-none bg-white border border-slate-200 text-slate-700 rounded-lg py-2.5 px-3 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-colors shadow-sm"
-                                                       placeholder="例如 10">
-                                                <p class="text-[11px] text-slate-400 mt-2 font-medium">仅统计真正进入成功收口并触发后续入库动作的成功次数，达到后暂停该主域名。</p>
-                                            </div>
-                                            <div>
-                                                <label class="block text-slate-700 text-xs font-black mb-2 uppercase tracking-wider">成功冷却秒数</label>
-                                                <input type="number" min="0" v-model.number="config.mail_domain_success_cooldown_sec"
-                                                       class="w-full appearance-none bg-white border border-slate-200 text-slate-700 rounded-lg py-2.5 px-3 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-colors shadow-sm"
-                                                       placeholder="例如 1800">
-                                                <p class="text-[11px] text-slate-400 mt-2 font-medium">成功阈值触发后，该主域名暂停使用的冷却时长。</p>
-                                            </div>
                                         </div>
 
                                         <div class="p-4 bg-slate-50 border border-slate-200 rounded-xl">
@@ -901,14 +887,11 @@
                                                     <p class="text-[11px] text-slate-400 mt-1 font-medium">可用 {{ availableMailDomainCount }} / 冷却 {{ cooldownMailDomainCount }}</p>
                                                 </div>
                                                 <div class="flex items-center gap-2 flex-wrap justify-end">
-                                                    <button @click="toggleMailDomainRuntimePanel" type="button" class="text-lg text-slate-400 hover:text-blue-500">
                                                     <button @click="toggleMailDomainRuntimePanel" type="button" :title="mailDomainRuntimePanelCollapsed ? '展开状态' : '隐藏状态'" :aria-label="mailDomainRuntimePanelCollapsed ? '展开状态' : '隐藏状态'" class="text-lg text-slate-400 hover:text-indigo-600 focus:outline-none transition-transform hover:scale-110">
                                                         <svg v-if="!mailDomainRuntimePanelCollapsed" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path></svg>
                                                         <svg v-else class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.542-7a9.97 9.97 0 012.67-3.835m2.89-2.89A9.97 9.97 0 0112 5c4.478 0 8.268 2.943 9.542 7a10.05 10.05 0 01-1.875 3.175m-2.89 2.89l-1.414-1.414M12 15a3 3 0 100-6 3 3 0 000 6z"></path></svg>
                                                     </button>
-                                                    </button>
-                                                    <button @click="fetchMailDomainRuntimeStats" type="button" class="px-3 py-2 text-xs font-black rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-100 transition-colors shadow-sm">刷新状态</button>
-                                                    <button @click="clearMailDomainRuntimeStats" type="button" class="px-3 py-2 text-xs font-black rounded-lg border border-rose-200 bg-white text-rose-600 hover:bg-rose-50 transition-colors shadow-sm">清空状态</button>
+                                                    <button @click="clearMailDomainRuntimeCooldowns" type="button" class="px-3 py-2 text-xs font-black rounded-lg border border-rose-200 bg-white text-rose-600 hover:bg-rose-50 transition-colors shadow-sm">清除冷却</button>
                                                 </div>
                                             </div>
                                             <div v-show="!mailDomainRuntimePanelCollapsed">
