@@ -1051,6 +1051,7 @@ def get_email_and_token(proxies: Any = None) -> tuple:
     if mode == "cloudflare_temp_email":
         headers = {"x-admin-auth": cfg.ADMIN_AUTH, "Content-Type": "application/json"}
         body = {"enablePrefix": False, "name": prefix, "domain": selected_domain}
+        terminal_failure_reason = ""
         for attempt in range(5):
             if getattr(cfg, 'GLOBAL_STOP', False): return None, None
             try:
@@ -1063,7 +1064,7 @@ def get_email_and_token(proxies: Any = None) -> tuple:
                 text = str(getattr(res, 'text', '') or '')
                 quota_text = text.lower()
                 if status_code in {403, 429, 507} or any(token in quota_text for token in ("quota", "limit", "capacity", "exceeded", "over limit", "full")):
-                    _set_last_domain_failure_event(selected_domain, "capacity_exceeded")
+                    terminal_failure_reason = "capacity_exceeded"
                     print(f"[{cfg.ts()}] [WARNING] cloudflare_temp_email邮箱容量疑似超限 (尝试 {attempt + 1}/5): {res.text}")
                     time.sleep(1)
                     continue
@@ -1073,16 +1074,17 @@ def get_email_and_token(proxies: Any = None) -> tuple:
                     email = data["address"].strip()
                     jwt = data.get("jwt", "").strip()
                     set_last_email(email)
-                    _thread_data.last_domain_failure_event = None
                     print(f"[{cfg.ts()}] [INFO] cloudflare_temp_email成功获取临时邮箱: {mask_email(email)}")
                     return email, jwt
+                terminal_failure_reason = "cloudflare_temp_email_network"
                 print(f"[{cfg.ts()}] [WARNING] cloudflare_temp_email邮箱申请失败 (尝试 {attempt + 1}/5): {res.text}")
                 time.sleep(1)
             except Exception as e:
-                if attempt >= 4:
-                    _set_last_domain_failure_event(selected_domain, "cloudflare_temp_email_network")
+                terminal_failure_reason = "cloudflare_temp_email_network"
                 print(f"[{cfg.ts()}] [ERROR] cloudflare_temp_email邮箱注册网络异常，准备重试: {e}")
                 time.sleep(2)
+        if terminal_failure_reason:
+            _set_last_domain_failure_event(selected_domain, terminal_failure_reason)
         return None, None
 
 
