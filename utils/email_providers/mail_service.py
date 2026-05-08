@@ -339,6 +339,37 @@ def get_mail_domain_runtime_summary() -> dict:
         }
 
 
+def sync_mail_domain_runtime_state_with_config() -> dict:
+    configured_domains = _get_configured_main_domains()
+    configured_set = set(configured_domains)
+    now = time.time()
+
+    with _DOMAIN_RUNTIME_LOCK:
+        _prune_expired_domain_records(now)
+        existing_domains = set(_DOMAIN_RUNTIME_STATE.keys())
+
+        added_count = 0
+        removed_count = 0
+
+        for domain in configured_domains:
+            if domain not in _DOMAIN_RUNTIME_STATE:
+                _DOMAIN_RUNTIME_STATE[domain] = _new_domain_runtime_state()
+                added_count += 1
+
+        for domain in list(existing_domains):
+            if domain not in configured_set:
+                _DOMAIN_RUNTIME_STATE.pop(domain, None)
+                removed_count += 1
+
+        total_count = len(_DOMAIN_RUNTIME_STATE)
+
+    return {
+        "added_count": added_count,
+        "removed_count": removed_count,
+        "total_count": total_count,
+    }
+
+
 def clear_mail_domain_runtime_domain_counters(domain: str) -> dict:
     normalized = _normalize_main_domain(domain)
     if not normalized or not is_mail_domain_runtime_control_enabled():

@@ -673,6 +673,10 @@ createApp({
             if (reason === 'fail_limit') return '丢弃阈值';
             return '无';
         },
+        isMailDomainRuntimePristine(item) {
+            if (!item || typeof item !== 'object') return false;
+            return !item.last_used_at && !item.success_count && !item.fail_count && !(item.cooldown_remaining_sec > 0);
+        },
         async clearMailDomainRuntimeCooldowns() {
             try {
                 const res = await this.authFetch('/api/config/mail_domain_runtime_stats/clear', { method: 'POST' });

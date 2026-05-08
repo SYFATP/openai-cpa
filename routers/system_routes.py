@@ -283,6 +283,7 @@ async def save_config(new_config: dict, token: str = Depends(verify_token)):
             new_config["sub2api_mode"].pop("min_remaining_weekly_percent", None)
         new_config["local_microsoft"] = _sanitize_local_microsoft_config(new_config.get("local_microsoft"))
         reload_all_configs(new_config_dict=new_config)
+        mail_service.sync_mail_domain_runtime_state_with_config()
 
         return {"status": "success", "message": "✅ 配置已成功保存并同步至云端！"}
     except Exception as e:
