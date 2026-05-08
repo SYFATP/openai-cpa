@@ -188,6 +188,7 @@ EMAIL_API_MODE: str = ""
 MAIL_DOMAINS: str = ""
 DISABLED_MAIL_DOMAINS: list[str] = []
 ENABLE_MAIL_DOMAIN_RUNTIME_CONTROL: bool = False
+MAIL_DOMAIN_FAILURE_TYPES: list[str] = ["discarded_email"]
 MAIL_DOMAIN_FAIL_THRESHOLD: int = 3
 MAIL_DOMAIN_FAIL_COOLDOWN_SEC: int = 600
 GPTMAIL_BASE: str = ""
@@ -401,7 +402,7 @@ def reload_all_configs(new_config_dict=None):
     global EMAIL_API_MODE, MAIL_DOMAINS, GPTMAIL_BASE, ADMIN_AUTH
     global DISABLED_MAIL_DOMAINS
     global ENABLE_MAIL_DOMAIN_RUNTIME_CONTROL
-    global MAIL_DOMAIN_FAIL_THRESHOLD, MAIL_DOMAIN_FAIL_COOLDOWN_SEC
+    global MAIL_DOMAIN_FAILURE_TYPES, MAIL_DOMAIN_FAIL_THRESHOLD, MAIL_DOMAIN_FAIL_COOLDOWN_SEC
     global ENABLE_SUB_DOMAINS, SUB_DOMAIN_COUNT
     global IMAP_SERVER, IMAP_PORT, IMAP_USER, IMAP_PASS
     global FREEMAIL_API_URL, FREEMAIL_API_TOKEN, FREEMAIL_LOCAL_WEBHOOK, FREEMAIL_WEBHOOK_SECRET
@@ -576,6 +577,12 @@ def reload_all_configs(new_config_dict=None):
     MAIL_DOMAINS = _c.get("mail_domains", "")
     DISABLED_MAIL_DOMAINS = normalize_domain_list(_c.get("disabled_mail_domains", []))
     ENABLE_MAIL_DOMAIN_RUNTIME_CONTROL = safe_bool(_c.get("enable_mail_domain_runtime_control", False), default=False)
+    MAIL_DOMAIN_FAILURE_TYPES = [
+        str(item or "").strip().lower()
+        for item in (_c.get("mail_domain_failure_types", ["discarded_email"]) or ["discarded_email"])
+        if str(item or "").strip()
+    ]
+    MAIL_DOMAIN_FAILURE_TYPES = list(dict.fromkeys(MAIL_DOMAIN_FAILURE_TYPES)) or ["discarded_email"]
     MAIL_DOMAIN_FAIL_THRESHOLD = safe_int(_c.get("mail_domain_fail_threshold", 3), default=3, minimum=0)
     MAIL_DOMAIN_FAIL_COOLDOWN_SEC = safe_int(_c.get("mail_domain_fail_cooldown_sec", 600), default=600, minimum=0)
     GPTMAIL_BASE = str(_c.get("gptmail_base", "")).strip().rstrip("/")

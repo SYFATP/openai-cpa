@@ -284,6 +284,13 @@ async def save_config(new_config: dict, token: str = Depends(verify_token)):
         new_config["local_microsoft"] = _sanitize_local_microsoft_config(new_config.get("local_microsoft"))
         if not isinstance(new_config.get("disabled_mail_domains"), list):
             new_config["disabled_mail_domains"] = []
+        if not isinstance(new_config.get("mail_domain_failure_types"), list):
+            new_config["mail_domain_failure_types"] = ["discarded_email"]
+        new_config["mail_domain_failure_types"] = list(dict.fromkeys(
+            str(item or "").strip().lower()
+            for item in new_config.get("mail_domain_failure_types", [])
+            if str(item or "").strip()
+        )) or ["discarded_email"]
         reload_all_configs(new_config_dict=new_config)
         mail_service.sync_mail_domain_runtime_state_with_config()
 

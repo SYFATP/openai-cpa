@@ -639,6 +639,13 @@ createApp({
                 )];
                 if (this.config.enable_mail_domain_runtime_control === undefined) this.config.enable_mail_domain_runtime_control = false;
                 this.config.enable_mail_domain_runtime_control = normalizeBooleanLike(this.config.enable_mail_domain_runtime_control, false);
+                if (!Array.isArray(this.config.mail_domain_failure_types)) this.config.mail_domain_failure_types = ['discarded_email'];
+                this.config.mail_domain_failure_types = [...new Set(
+                    this.config.mail_domain_failure_types
+                        .map(item => String(item || '').trim().toLowerCase())
+                        .filter(Boolean)
+                )];
+                if (this.config.mail_domain_failure_types.length === 0) this.config.mail_domain_failure_types = ['discarded_email'];
                 if (this.config.mail_domain_fail_threshold === undefined) this.config.mail_domain_fail_threshold = 3;
                 if (this.config.mail_domain_fail_cooldown_sec === undefined) this.config.mail_domain_fail_cooldown_sec = 600;
             } catch (e) {}
@@ -674,10 +681,6 @@ createApp({
         toggleMailDomainRuntimePanel() {
             this.mailDomainRuntimePanelCollapsed = !this.mailDomainRuntimePanelCollapsed;
             localStorage.setItem('mail_domain_runtime_panel_collapsed', this.mailDomainRuntimePanelCollapsed ? 'true' : 'false');
-        },
-        formatMailDomainCooldownReason(reason) {
-            if (reason === 'fail_limit') return '丢弃阈值';
-            return '无';
         },
         isMailDomainRuntimePristine(item) {
             if (!item || typeof item !== 'object') return false;
@@ -783,6 +786,17 @@ createApp({
                     this.config.local_microsoft.suffix_len_max = maxLen;
                 }
                 this.config.enable_mail_domain_runtime_control = normalizeBooleanLike(this.config.enable_mail_domain_runtime_control, false);
+                if (!Array.isArray(this.config.mail_domain_failure_types)) {
+                    this.config.mail_domain_failure_types = ['discarded_email'];
+                }
+                this.config.mail_domain_failure_types = [...new Set(
+                    this.config.mail_domain_failure_types
+                        .map(item => String(item || '').trim().toLowerCase())
+                        .filter(Boolean)
+                )];
+                if (this.config.mail_domain_failure_types.length === 0) {
+                    this.config.mail_domain_failure_types = ['discarded_email'];
+                }
                 if (!this.config.enable_mail_domain_runtime_control) {
                     this.mailDomainRuntimeStats = [];
                     this.mailDomainRuntimeStatsError = '';

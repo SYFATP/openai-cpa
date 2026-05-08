@@ -879,6 +879,34 @@
                                             </div>
                                         </div>
 
+                                        <div>
+                                            <label class="block text-slate-700 text-xs font-black mb-3 uppercase tracking-wider">异常判断逻辑</label>
+                                            <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                                <label class="flex items-start gap-3 p-3 bg-white border border-slate-200 rounded-xl shadow-sm cursor-pointer">
+                                                    <input type="checkbox" value="discarded_email" v-model="config.mail_domain_failure_types" class="mt-0.5 rounded border-slate-300 text-amber-500 focus:ring-amber-500/30">
+                                                    <div>
+                                                        <div class="text-sm font-black text-slate-700">邮件丢弃异常</div>
+                                                        <div class="text-[11px] text-slate-400 mt-1">沿用当前邮箱验证码重试耗尽后的丢弃逻辑。</div>
+                                                    </div>
+                                                </label>
+                                                <label class="flex items-start gap-3 p-3 bg-white border border-slate-200 rounded-xl shadow-sm cursor-pointer">
+                                                    <input type="checkbox" value="cloudflare_temp_email_network" v-model="config.mail_domain_failure_types" class="mt-0.5 rounded border-slate-300 text-amber-500 focus:ring-amber-500/30">
+                                                    <div>
+                                                        <div class="text-sm font-black text-slate-700">网络异常</div>
+                                                        <div class="text-[11px] text-slate-400 mt-1">仅统计 cloudflare_temp_email 申请邮箱时的网络异常。</div>
+                                                    </div>
+                                                </label>
+                                                <label class="flex items-start gap-3 p-3 bg-white border border-slate-200 rounded-xl shadow-sm cursor-pointer">
+                                                    <input type="checkbox" value="capacity_exceeded" v-model="config.mail_domain_failure_types" class="mt-0.5 rounded border-slate-300 text-amber-500 focus:ring-amber-500/30">
+                                                    <div>
+                                                        <div class="text-sm font-black text-slate-700">容量超限异常</div>
+                                                        <div class="text-[11px] text-slate-400 mt-1">统计 cloudflare_temp_email 申请邮箱时返回的限额或容量超限异常。</div>
+                                                    </div>
+                                                </label>
+                                            </div>
+                                            <p class="text-[11px] text-slate-400 mt-2 font-medium">仅勾选的异常类型会累计到当前域名的异常计数并参与冷却判断。</p>
+                                        </div>
+
                                         <div class="p-4 bg-slate-50 border border-slate-200 rounded-xl">
                                             <div class="flex items-center justify-between gap-3 mb-3">
                                                 <div>
@@ -924,10 +952,9 @@
                                                                 </span>
                                                             </div>
                                                         </div>
-                                                        <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 text-xs font-bold text-slate-600">
+                                                        <div class="grid grid-cols-2 lg:grid-cols-3 gap-3 text-xs font-bold text-slate-600">
                                                             <div class="bg-slate-50 rounded-lg px-3 py-2 border border-slate-100">异常: <span class="text-slate-800">{{ item.fail_count }}</span></div>
                                                             <div class="bg-slate-50 rounded-lg px-3 py-2 border border-slate-100">成功: <span class="text-slate-800">{{ item.success_count }}</span></div>
-                                                            <div class="bg-slate-50 rounded-lg px-3 py-2 border border-slate-100">原因: <span class="text-slate-800">{{ formatMailDomainCooldownReason(item.cooldown_reason) }}</span></div>
                                                             <div class="bg-slate-50 rounded-lg px-3 py-2 border border-slate-100">时间: <span class="text-slate-800">{{ formatDuration(item.cooldown_remaining_sec || 0) }}</span></div>
                                                         </div>
                                                     </div>
