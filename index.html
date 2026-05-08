@@ -850,7 +850,7 @@
                                         <div>
                                             <h4 class="text-sm font-black text-amber-600 tracking-wide">黄金矿工模式</h4>
                                             <p class="text-xs text-slate-500 mt-1 font-medium">开启后将对发信主域进行运行时计数与冷却调度。</p>
-                                            <p class="text-[11px] text-slate-400 mt-1">达到丢弃阈值后会自动进入冷却，帮助持续筛选更耐用的域名池；关闭后恢复常规随机使用，不记录计数，也不触发冷却。</p>
+                                            <p class="text-[11px] text-slate-400 mt-1">达到异常阈值后会自动进入冷却，帮助持续筛选更耐用的域名池；关闭后恢复常规随机使用，不记录计数，也不触发冷却。</p>
                                             <p v-if="!['cloudflare_temp_email', 'freemail', 'cloudmail', 'openai_cpa'].includes(config.email_api_mode)" class="text-[11px] font-bold text-rose-600 mt-3 bg-rose-50 px-3 py-2 rounded-lg inline-block border border-rose-100 shadow-sm flex items-center gap-1.5">
                                                 <span><svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg></span> 当前模式不支持此功能！仅限 cloudflare_temp_email, freemail, cloudmail, openai_cpa。
                                             </p>
@@ -864,18 +864,18 @@
                                     <div v-if="config.enable_mail_domain_runtime_control" class="border-t border-amber-100/60 pt-5 mt-2 space-y-5">
                                         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                                             <div>
-                                                <label class="block text-slate-700 text-xs font-black mb-2 uppercase tracking-wider">丢弃冷却阈值</label>
+                                                <label class="block text-slate-700 text-xs font-black mb-2 uppercase tracking-wider">异常冷却阈值</label>
                                                 <input type="number" min="0" v-model.number="config.mail_domain_fail_threshold"
                                                        class="w-full appearance-none bg-white border border-slate-200 text-slate-700 rounded-lg py-2.5 px-3 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-colors shadow-sm"
                                                        placeholder="例如 3">
-                                                <p class="text-[11px] text-slate-400 mt-2 font-medium">同一主域名本次运行累计丢弃达到该次数后暂停使用，0 表示关闭。</p>
+                                                <p class="text-[11px] text-slate-400 mt-2 font-medium">同一主域名本次运行累计异常达到该次数后暂停使用，0 表示关闭。</p>
                                             </div>
                                             <div>
-                                                <label class="block text-slate-700 text-xs font-black mb-2 uppercase tracking-wider">丢弃冷却秒数</label>
+                                                <label class="block text-slate-700 text-xs font-black mb-2 uppercase tracking-wider">异常冷却秒数</label>
                                                 <input type="number" min="0" v-model.number="config.mail_domain_fail_cooldown_sec"
                                                        class="w-full appearance-none bg-white border border-slate-200 text-slate-700 rounded-lg py-2.5 px-3 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-colors shadow-sm"
                                                        placeholder="例如 600">
-                                                <p class="text-[11px] text-slate-400 mt-2 font-medium">丢弃阈值触发后，该主域名暂停使用的冷却时长。</p>
+                                                <p class="text-[11px] text-slate-400 mt-2 font-medium">异常阈值触发后，该主域名暂停使用的冷却时长。</p>
                                             </div>
                                         </div>
 
@@ -916,7 +916,7 @@
                                                             </div>
                                                         </div>
                                                         <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 text-xs font-bold text-slate-600">
-                                                            <div class="bg-slate-50 rounded-lg px-3 py-2 border border-slate-100">丢弃计数: <span class="text-slate-800">{{ item.fail_count }}</span></div>
+                                                            <div class="bg-slate-50 rounded-lg px-3 py-2 border border-slate-100">异常计数: <span class="text-slate-800">{{ item.fail_count }}</span></div>
                                                             <div class="bg-slate-50 rounded-lg px-3 py-2 border border-slate-100">成功计数: <span class="text-slate-800">{{ item.success_count }}</span></div>
                                                             <div class="bg-slate-50 rounded-lg px-3 py-2 border border-slate-100">冷却原因: <span class="text-slate-800">{{ formatMailDomainCooldownReason(item.cooldown_reason) }}</span></div>
                                                             <div class="bg-slate-50 rounded-lg px-3 py-2 border border-slate-100">剩余时间: <span class="text-slate-800">{{ formatDuration(item.cooldown_remaining_sec || 0) }}</span></div>
@@ -924,7 +924,7 @@
                                                     </div>
                                                 </div>
                                                 <div v-else class="text-xs text-slate-400 font-medium bg-white border border-dashed border-slate-200 rounded-xl px-4 py-4">
-                                                    当前还没有域名运行时统计数据，开始注册后这里会显示各主域名的成功/丢弃计数与冷却状态。
+                                                    当前还没有域名运行时统计数据，开始注册后这里会显示各主域名的成功/异常计数与冷却状态。
                                                 </div>
                                             </div>
                                         </div>
