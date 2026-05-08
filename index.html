@@ -849,8 +849,8 @@
                                     <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
                                         <div>
                                             <h4 class="text-sm font-black text-amber-600 tracking-wide">黄金矿工模式</h4>
-                                            <p class="text-xs text-slate-500 mt-1 font-medium">开启后将对发信主域进行运行时计数与冷却调度。</p>
-                                            <p class="text-[11px] text-slate-400 mt-1">达到异常阈值后会自动进入冷却，帮助持续筛选更耐用的域名池；关闭后恢复常规随机使用，不记录计数，也不触发冷却。</p>
+                                            <p class="text-xs text-slate-500 mt-1 font-medium">开启后按主域统计异常，并在超限后自动冷却。</p>
+                                            <p class="text-[11px] text-slate-400 mt-1">超限域名会暂时停用；关闭后恢复随机使用，不计数、不冷却。</p>
                                             <p v-if="!['cloudflare_temp_email', 'freemail', 'cloudmail', 'openai_cpa'].includes(config.email_api_mode)" class="text-[11px] font-bold text-rose-600 mt-3 bg-rose-50 px-3 py-2 rounded-lg inline-block border border-rose-100 shadow-sm flex items-center gap-1.5">
                                                 <span><svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg></span> 当前模式不支持此功能！仅限 cloudflare_temp_email, freemail, cloudmail, openai_cpa。
                                             </p>
@@ -868,14 +868,14 @@
                                                 <input type="number" min="0" v-model.number="config.mail_domain_fail_threshold"
                                                        class="w-full appearance-none bg-white border border-slate-200 text-slate-700 rounded-lg py-2.5 px-3 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-colors shadow-sm"
                                                        placeholder="例如 3">
-                                                <p class="text-[11px] text-slate-400 mt-2 font-medium">同一主域名本次运行累计异常达到该次数后暂停使用，0 表示关闭。</p>
+                                                <p class="text-[11px] text-slate-400 mt-2 font-medium">同一主域异常达到该次数后暂停使用，0 表示关闭。</p>
                                             </div>
                                             <div>
                                                 <label class="block text-slate-700 text-xs font-black mb-2 uppercase tracking-wider">冷却秒数</label>
                                                 <input type="number" min="0" v-model.number="config.mail_domain_fail_cooldown_sec"
                                                        class="w-full appearance-none bg-white border border-slate-200 text-slate-700 rounded-lg py-2.5 px-3 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-colors shadow-sm"
                                                        placeholder="例如 600">
-                                                <p class="text-[11px] text-slate-400 mt-2 font-medium">异常阈值触发后，该主域名暂停使用的冷却时长。</p>
+                                                <p class="text-[11px] text-slate-400 mt-2 font-medium">触发阈值后，该主域暂停使用的时长。</p>
                                             </div>
                                         </div>
 
@@ -886,21 +886,21 @@
                                                     <input type="checkbox" value="discarded_email" v-model="config.mail_domain_failure_types" class="mt-0.5 rounded border-slate-300 text-amber-500 focus:ring-amber-500/30">
                                                     <div>
                                                         <div class="text-sm font-black text-slate-700">邮件丢弃异常</div>
-                                                        <div class="text-[11px] text-slate-400 mt-1">沿用当前邮箱验证码重试耗尽后的丢弃逻辑。</div>
+                                                        <div class="text-[11px] text-slate-400 mt-1">统计验证码重试耗尽后的丢弃异常。</div>
                                                     </div>
                                                 </label>
                                                 <label class="flex items-start gap-3 p-3 bg-white border border-slate-200 rounded-xl shadow-sm cursor-pointer">
                                                     <input type="checkbox" value="cloudflare_temp_email_network" v-model="config.mail_domain_failure_types" class="mt-0.5 rounded border-slate-300 text-amber-500 focus:ring-amber-500/30">
                                                     <div>
                                                         <div class="text-sm font-black text-slate-700">网络异常</div>
-                                                        <div class="text-[11px] text-slate-400 mt-1">仅统计 cloudflare_temp_email 申请邮箱时的网络异常。</div>
+                                                        <div class="text-[11px] text-slate-400 mt-1">统计申请邮箱时的网络异常。</div>
                                                     </div>
                                                 </label>
                                                 <label class="flex items-start gap-3 p-3 bg-white border border-slate-200 rounded-xl shadow-sm cursor-pointer">
                                                     <input type="checkbox" value="capacity_exceeded" v-model="config.mail_domain_failure_types" class="mt-0.5 rounded border-slate-300 text-amber-500 focus:ring-amber-500/30">
                                                     <div>
                                                         <div class="text-sm font-black text-slate-700">容量超限异常</div>
-                                                        <div class="text-[11px] text-slate-400 mt-1">统计 cloudflare_temp_email 申请邮箱时返回的限额或容量超限异常。</div>
+                                                        <div class="text-[11px] text-slate-400 mt-1">统计返回的限额或容量超限。</div>
                                                     </div>
                                                 </label>
                                             </div>
