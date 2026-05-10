@@ -368,6 +368,45 @@ createApp({
                 groups[index % groupCount].push(domain);
             });
             return groups;
+        },
+        mailDomainGroupLabelMap() {
+            if (!this.config || !this.config.enable_mail_domain_grouping) {
+                return {};
+            }
+            const groups = this.config.mail_domain_group_mode === 'manual'
+                ? this.config.mail_domain_groups
+                    .map(group => normalizeMailDomainCsv(group))
+                    .filter(group => group.length > 0)
+                : this.autoMailDomainGroupsPreview;
+            return groups.reduce((map, group, index) => {
+                group.forEach(domain => {
+                    map[domain] = `[${index + 1}]`;
+                });
+                return map;
+            }, {});
+        },
+        sortedMailDomainRuntimeStats() {
+            if (!this.config || !this.config.enable_mail_domain_grouping) {
+                return this.mailDomainRuntimeStats;
+            }
+            const groups = this.config.mail_domain_group_mode === 'manual'
+                ? this.config.mail_domain_groups
+                    .map(group => normalizeMailDomainCsv(group))
+                    .filter(group => group.length > 0)
+                : this.autoMailDomainGroupsPreview;
+            const orderMap = groups.reduce((map, group, groupIndex) => {
+                group.forEach((domain, domainIndex) => {
+                    map[domain] = { groupIndex, domainIndex };
+                });
+                return map;
+            }, {});
+            return [...this.mailDomainRuntimeStats].sort((a, b) => {
+                const left = orderMap[a?.domain] || { groupIndex: Number.MAX_SAFE_INTEGER, domainIndex: Number.MAX_SAFE_INTEGER };
+                const right = orderMap[b?.domain] || { groupIndex: Number.MAX_SAFE_INTEGER, domainIndex: Number.MAX_SAFE_INTEGER };
+                if (left.groupIndex !== right.groupIndex) return left.groupIndex - right.groupIndex;
+                if (left.domainIndex !== right.domainIndex) return left.domainIndex - right.domainIndex;
+                return String(a?.domain || '').localeCompare(String(b?.domain || ''));
+            });
         }
     },
     methods: {

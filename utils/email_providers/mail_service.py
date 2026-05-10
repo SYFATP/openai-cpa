@@ -179,6 +179,24 @@ def _get_effective_domain_groups(main_domains: list[str]) -> list[list[str]]:
     return groups if groups else [main_domains]
 
 
+def _get_mail_domain_group_label(domain: str) -> str:
+    normalized = _normalize_main_domain(domain)
+    if not normalized or not _is_mail_domain_grouping_enabled():
+        return ""
+    main_domains = _get_configured_main_domains()
+    groups = _get_effective_domain_groups(main_domains)
+    for index, group in enumerate(groups):
+        if normalized in group:
+            return f"[{index + 1}]"
+    return ""
+
+
+def _format_grouped_mail_log(label: str, email: str) -> str:
+    group_label = _get_mail_domain_group_label(label)
+    masked_email = mask_email(email)
+    return f"{group_label} {masked_email}" if group_label else masked_email
+
+
 def _normalize_main_domain(domain: str) -> str:
     text = str(domain or "").strip().lower().strip(".")
     if not text:
@@ -1328,7 +1346,7 @@ def get_email_and_token(
                     jwt = data.get("jwt", "").strip()
                     set_last_email(email)
                     print(
-                        f"[{cfg.ts()}] [INFO] cloudflare_temp_email成功获取临时邮箱: {mask_email(email)}"
+                        f"[{cfg.ts()}] [INFO] cloudflare_temp_email成功获取临时邮箱: {_format_grouped_mail_log(selected_domain, email)}"
                     )
                     return email, jwt
                 terminal_failure_reason = "cloudflare_temp_email_network"
