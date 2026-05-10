@@ -320,27 +320,37 @@ def _select_low_failure_domain(candidates: list[str]) -> Optional[str]:
     if not candidates:
         return None
 
-    clean_domains = []
-    degraded_domains = []
+    selected_failure_types = _get_selected_mail_domain_failure_types()
+    prioritized_clean = True
+    best_key = None
+    best_domains: list[str] = []
+
     for domain in candidates:
         state = _DOMAIN_RUNTIME_STATE.setdefault(domain, _new_domain_runtime_state())
-        fail_count = _recalculate_domain_fail_count(state)
-        if fail_count <= 0:
-            clean_domains.append(domain)
-        else:
-            degraded_domains.append(domain)
+        fail_count = _recalculate_domain_fail_count(state, selected_failure_types)
+        domain_is_clean = fail_count <= 0
+        selection_key = _get_domain_selection_key(state)
 
-    prioritized = clean_domains if clean_domains else degraded_domains
-    if not prioritized:
-        return None
+        if best_key is None:
+            prioritized_clean = domain_is_clean
+            best_key = selection_key
+            best_domains = [domain]
+            continue
 
-    ranked_candidates = []
-    for domain in prioritized:
-        state = _DOMAIN_RUNTIME_STATE.setdefault(domain, _new_domain_runtime_state())
-        ranked_candidates.append((_get_domain_selection_key(state), domain))
+        if prioritized_clean and not domain_is_clean:
+            continue
+        if domain_is_clean and not prioritized_clean:
+            prioritized_clean = True
+            best_key = selection_key
+            best_domains = [domain]
+            continue
+        if selection_key < best_key:
+            best_key = selection_key
+            best_domains = [domain]
+            continue
+        if selection_key == best_key:
+            best_domains.append(domain)
 
-    best_key = min(key for key, _ in ranked_candidates)
-    best_domains = [domain for key, domain in ranked_candidates if key == best_key]
     if not best_domains:
         return None
     if len(best_domains) == 1:
@@ -524,12 +534,12 @@ def _get_selected_mail_domain_failure_types() -> set[str]:
     return {item for item in selected if item in _MAIL_DOMAIN_FAILURE_TYPES}
 
 
-def _recalculate_domain_fail_count(state: dict) -> int:
+def _recalculate_domain_fail_count(state: dict, selected_failure_types: Optional[set[str]] = None) -> int:
     failure_counts = state.get("failure_counts")
     if not isinstance(failure_counts, dict):
         failure_counts = {}
         state["failure_counts"] = failure_counts
-    selected = _get_selected_mail_domain_failure_types()
+    selected = selected_failure_types if selected_failure_types is not None else _get_selected_mail_domain_failure_types()
     fail_count = sum(
         max(0, int(failure_counts.get(reason) or 0))
         for reason in selected
