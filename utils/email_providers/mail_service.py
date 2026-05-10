@@ -1166,6 +1166,9 @@ def get_email_and_token(
     prefix, ai_enabled = _get_ai_data_package()
     use_domain_runtime_control = is_mail_domain_runtime_control_enabled(mode)
 
+    batch_preallocated = batch_id is not None and worker_index is not None
+    skip_domain_fallback = batch_preallocated and assigned_domain is None
+
     if cfg.ENABLE_SUB_DOMAINS:
         # sticky = getattr(_thread_data, 'sticky_domain', None)
         # if sticky:
@@ -1177,7 +1180,10 @@ def get_email_and_token(
             print(f"[{cfg.ts()}] [ERROR] 未配置主域名池，无法捏造子域！")
             return None, None
 
-        selected_main = _normalize_main_domain(assigned_domain) if assigned_domain else pick_available_main_domain(main_list)
+        if skip_domain_fallback:
+            return None, None
+
+        selected_main = _normalize_main_domain(assigned_domain) if assigned_domain is not None else pick_available_main_domain(main_list)
         if not selected_main:
             if _all_configured_main_domains_disabled():
                 print(f"[{cfg.ts()}] [ERROR] 所有主域名均已被手动禁用，当前无法继续生成邮箱！")
@@ -1209,7 +1215,9 @@ def get_email_and_token(
         if not domain_list:
             print(f"[{cfg.ts()}] [ERROR] 域名池配置为空，无法生成邮箱！")
             return None, None
-        selected_domain = _normalize_main_domain(assigned_domain) if assigned_domain else pick_available_main_domain(domain_list)
+        if skip_domain_fallback:
+            return None, None
+        selected_domain = _normalize_main_domain(assigned_domain) if assigned_domain is not None else pick_available_main_domain(domain_list)
         if not selected_domain:
             if _all_configured_main_domains_disabled():
                 print(f"[{cfg.ts()}] [ERROR] 所有主域名均已被手动禁用，当前无法继续生成邮箱！")
