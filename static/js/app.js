@@ -117,6 +117,9 @@ createApp({
             mailDomainRuntimeStatsError: '',
             mailDomainRuntimePanelCollapsed: normalizeBooleanLike(localStorage.getItem('mail_domain_runtime_panel_collapsed'), false),
             mailDomainRuntimeLastFetchAt: 0,
+            mailDomainRuntimePollIntervalMs: 2500,
+            mailDomainRuntimeFetchPromise: null,
+            mailDomainRuntimeFetchQueued: false,
             blacklistStr: "",
             warpListStr: "",
             rawProxyListStr: "",
@@ -527,7 +530,7 @@ createApp({
         async initApp() {
             await this.fetchConfig();
             if (this.config?.enable_mail_domain_runtime_control) {
-                await this.fetchMailDomainRuntimeStats();
+                await this.fetchMailDomainRuntimeStats({ force: true });
             } else {
                 this.mailDomainRuntimeStats = [];
                 this.mailDomainRuntimeStatsError = '';
@@ -555,8 +558,28 @@ createApp({
             if(this.statsTimer) clearTimeout(this.statsTimer);
             this.pollStats();
         },
+        shouldPollMailDomainRuntimeStats() {
+            return !!(
+                this.currentTab === 'email' &&
+                this.isRunning &&
+                this.config?.enable_mail_domain_runtime_control &&
+                !this.mailDomainRuntimePanelCollapsed
+            );
+        },
+        queuePollStats() {
+            if (this._pollStatsInFlight) {
+                this._pollStatsQueued = true;
+                return;
+            }
+            this.pollStats();
+        },
         async pollStats() {
             if(!this.isLoggedIn) return;
+            if (this._pollStatsInFlight) {
+                this._pollStatsQueued = true;
+                return;
+            }
+            this._pollStatsInFlight = true;
             try {
                 const res = await this.authFetch('/api/stats');
                 const data = await res.json();
@@ -583,13 +606,10 @@ createApp({
                 }
 
                 if (
-                    this.currentTab === 'email' &&
-                    this.isRunning &&
-                    this.config?.enable_mail_domain_runtime_control &&
-                    !this.mailDomainRuntimePanelCollapsed &&
-                    Date.now() - this.mailDomainRuntimeLastFetchAt >= 1000
+                    this.shouldPollMailDomainRuntimeStats() &&
+                    Date.now() - this.mailDomainRuntimeLastFetchAt >= this.mailDomainRuntimePollIntervalMs
                 ) {
-                    this.fetchMailDomainRuntimeStats({ silent: true });
+                    await this.fetchMailDomainRuntimeStats({ silent: true });
                 }
 
                 if (this.currentTab === 'cluster') {
@@ -602,8 +622,14 @@ createApp({
             } catch(e) {
 
             } finally {
+                this._pollStatsInFlight = false;
+                if (this._pollStatsQueued) {
+                    this._pollStatsQueued = false;
+                    this.queuePollStats();
+                    return;
+                }
                 this.statsTimer = setTimeout(() => {
-                    this.pollStats();
+                    this.queuePollStats();
                 }, 1000);
             }
         },
@@ -919,36 +945,55 @@ createApp({
             this.config.mail_domain_groups[index] = normalizeMailDomainCsv(this.config.mail_domain_groups[index]).join(',');
         },
         async fetchMailDomainRuntimeStats(options = {}) {
-            const { silent = false } = options;
+            const { silent = false, force = false } = options;
             if (!this.config?.enable_mail_domain_runtime_control) {
                 this.mailDomainRuntimeStats = [];
                 this.mailDomainRuntimeStatsError = '';
                 this.mailDomainRuntimeLastFetchAt = 0;
+                this.mailDomainRuntimeFetchPromise = null;
+                this.mailDomainRuntimeFetchQueued = false;
                 return;
             }
-            try {
-                const res = await this.authFetch('/api/config/mail_domain_runtime_stats');
-                const data = await res.json();
-                if (data.status === 'success' && Array.isArray(data.items)) {
-                    this.mailDomainRuntimeStats = data.items;
-                    this.mailDomainRuntimeStatsError = '';
-                    this.mailDomainRuntimeLastFetchAt = Date.now();
-                } else {
-                    this.mailDomainRuntimeStatsError = data.message || '域名运行时状态获取失败';
+            if (!force && this.mailDomainRuntimeFetchPromise) {
+                this.mailDomainRuntimeFetchQueued = true;
+                return this.mailDomainRuntimeFetchPromise;
+            }
+            const request = (async () => {
+                try {
+                    const res = await this.authFetch('/api/config/mail_domain_runtime_stats');
+                    const data = await res.json();
+                    if (data.status === 'success' && Array.isArray(data.items)) {
+                        this.mailDomainRuntimeStats = data.items;
+                        this.mailDomainRuntimeStatsError = '';
+                        this.mailDomainRuntimeLastFetchAt = Date.now();
+                    } else {
+                        this.mailDomainRuntimeStatsError = data.message || '域名运行时状态获取失败';
+                        if (!silent) {
+                            this.showToast(this.mailDomainRuntimeStatsError, 'error');
+                        }
+                    }
+                } catch (e) {
+                    this.mailDomainRuntimeStatsError = '域名运行时状态获取失败，请检查后端接口或网络连接';
                     if (!silent) {
                         this.showToast(this.mailDomainRuntimeStatsError, 'error');
                     }
+                } finally {
+                    this.mailDomainRuntimeFetchPromise = null;
+                    if (this.mailDomainRuntimeFetchQueued) {
+                        this.mailDomainRuntimeFetchQueued = false;
+                        this.fetchMailDomainRuntimeStats({ silent: true, force: true });
+                    }
                 }
-            } catch (e) {
-                this.mailDomainRuntimeStatsError = '域名运行时状态获取失败，请检查后端接口或网络连接';
-                if (!silent) {
-                    this.showToast(this.mailDomainRuntimeStatsError, 'error');
-                }
-            }
+            })();
+            this.mailDomainRuntimeFetchPromise = request;
+            return request;
         },
         toggleMailDomainRuntimePanel() {
             this.mailDomainRuntimePanelCollapsed = !this.mailDomainRuntimePanelCollapsed;
             localStorage.setItem('mail_domain_runtime_panel_collapsed', this.mailDomainRuntimePanelCollapsed ? 'true' : 'false');
+            if (!this.mailDomainRuntimePanelCollapsed && this.config?.enable_mail_domain_runtime_control) {
+                this.fetchMailDomainRuntimeStats({ silent: true, force: true });
+            }
         },
         isMailDomainRuntimePristine(item) {
             if (!item || typeof item !== 'object') return false;
@@ -980,8 +1025,8 @@ createApp({
                 if (data.status === 'success') {
                     this.mailDomainRuntimeStatsError = '';
                     this.showToast(data.message || '已清除全部域名冷却', 'success');
-                    await this.fetchMailDomainRuntimeStats({ silent: true });
-                    this.pollStats();
+                    await this.fetchMailDomainRuntimeStats({ silent: true, force: true });
+                    this.queuePollStats();
                 } else {
                     this.showToast(data.message || '清除全部域名冷却失败', 'error');
                 }
@@ -998,8 +1043,8 @@ createApp({
                 const data = await res.json();
                 if (data.status === 'success') {
                     this.showToast(data.message || '已清除域名异常', 'success');
-                    await this.fetchMailDomainRuntimeStats({ silent: true });
-                    this.pollStats();
+                    await this.fetchMailDomainRuntimeStats({ silent: true, force: true });
+                    this.queuePollStats();
                 } else {
                     this.showToast(data.message || '清除域名异常失败', 'error');
                 }
@@ -1016,8 +1061,8 @@ createApp({
                 const data = await res.json();
                 if (data.status === 'success') {
                     this.showToast(data.message || '已清除域名冷却', 'success');
-                    await this.fetchMailDomainRuntimeStats({ silent: true });
-                    this.pollStats();
+                    await this.fetchMailDomainRuntimeStats({ silent: true, force: true });
+                    this.queuePollStats();
                 } else {
                     this.showToast(data.message || '清除域名冷却失败', 'error');
                 }
@@ -1104,8 +1149,8 @@ createApp({
                 if(data.status === 'success') {
                     this.showToast(data.message, "success");
                     await this.fetchConfig();
-                    await this.fetchMailDomainRuntimeStats();
-                    this.pollStats();
+                    await this.fetchMailDomainRuntimeStats({ force: true });
+                    this.queuePollStats();
                 } else { this.showToast("保存失败：" + data.message, "error"); }
             } catch (e) { this.showToast("保存失败网络异常", "error"); }
         },
@@ -1177,14 +1222,14 @@ createApp({
             this.currentTab = tabId;
             window.location.hash = tabId;
 			if (tabId === 'console') {
-				this.pollStats();
+				this.queuePollStats();
 			}
             if (tabId === 'accounts') {
                 this.fetchAccounts();
             }
 			if (tabId === 'email') {
 				this.fetchConfig();
-                    this.fetchMailDomainRuntimeStats();
+                    this.fetchMailDomainRuntimeStats({ force: true });
 			}
 			if (tabId === 'cloud') {
 			    this.fetchCloudAccounts();
@@ -1427,8 +1472,8 @@ createApp({
                 if (data.status === 'success') {
                     this.isRunning = true;
                     this.currentTab = 'console';
-                    this.pollStats();
-                    await this.fetchMailDomainRuntimeStats();
+                    this.queuePollStats();
+                    await this.fetchMailDomainRuntimeStats({ force: true });
                     this.showToast(`启动成功`, "success");
                 } else { this.showToast(data.message, "error"); }
             } catch (e) { this.showToast("启动请求发送失败", "error"); }
@@ -1439,7 +1484,7 @@ createApp({
                 const data = await res.json();
                 this.showToast("任务已停止", "info");
                 this.isRunning = false;
-                await this.fetchMailDomainRuntimeStats();
+                await this.fetchMailDomainRuntimeStats({ force: true });
                 const now = new Date();
             const timeStr = formatMainlandTime(now); // 获取如 14:30:05 格式
                 this.logs.push({
@@ -1456,7 +1501,7 @@ createApp({
                         container.scrollTop = container.scrollHeight;
                     }
                 });
-                this.pollStats();
+                this.queuePollStats();
             } catch (e) {
                 this.showToast("停止请求发送失败", "error");
             }
@@ -2118,7 +2163,7 @@ createApp({
 
                 if(data.code === 200) {
                     this.showToast(data.message, 'success');
-                    this.pollStats();
+                    this.queuePollStats();
                 } else {
                     this.showToast(data.message || '启动测活失败', 'error');
                 }

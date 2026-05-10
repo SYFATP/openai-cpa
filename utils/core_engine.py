@@ -1051,7 +1051,7 @@ def normal_main_loop(args, stop_event: threading.Event, executor=None):
                 batch_id = None
                 if should_preallocate_domains:
                     batch_id = int(time.time() * 1000)
-                    domain_pool = [d.strip() for d in str(getattr(cfg, 'MAIL_DOMAINS', '') or '').split(',') if d.strip()]
+                    domain_pool = mail_service.get_configured_main_domains_snapshot()
                     preallocated_domains = mail_service.preallocate_main_domains_for_batch(domain_pool, current_batch)
 
                 def _worker(worker_index=0, assigned_domain=None):
@@ -1362,7 +1362,7 @@ async def cpa_main_loop(args, async_stop_event: asyncio.Event, executor=None):
                         and getattr(cfg, 'ENABLE_MAIL_DOMAIN_RUNTIME_CONTROL', False)
                     ):
                         batch_id = int(time.time() * 1000)
-                        domain_pool = [d.strip() for d in str(getattr(cfg, 'MAIL_DOMAINS', '') or '').split(',') if d.strip()]
+                        domain_pool = mail_service.get_configured_main_domains_snapshot()
                         preallocated_domains = mail_service.preallocate_main_domains_for_batch(domain_pool, batch_size)
 
                     if cfg.ENABLE_MULTI_THREAD_REG:
@@ -1604,7 +1604,7 @@ async def sub2api_main_loop(args, async_stop_event: asyncio.Event, executor=None
                         and getattr(cfg, 'ENABLE_MAIL_DOMAIN_RUNTIME_CONTROL', False)
                     ):
                         batch_id = int(time.time() * 1000)
-                        domain_pool = [d.strip() for d in str(getattr(cfg, 'MAIL_DOMAINS', '') or '').split(',') if d.strip()]
+                        domain_pool = mail_service.get_configured_main_domains_snapshot()
                         preallocated_domains = mail_service.preallocate_main_domains_for_batch(domain_pool, batch_size)
 
                     if cfg.ENABLE_MULTI_THREAD_REG:

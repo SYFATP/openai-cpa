@@ -52,6 +52,14 @@ _CM_TOKEN_CACHE: Optional[str] = None
 _DOMAIN_RUNTIME_LOCK = threading.Lock()
 _DOMAIN_RUNTIME_STATE = {}
 _MAIL_DOMAIN_FAILURE_TYPES = {"discarded_email", "cloudflare_temp_email_network", "capacity_exceeded"}
+_MAIL_DOMAIN_CONFIG_CACHE = {
+    "key": None,
+    "main_domains": (),
+    "main_domain_set": frozenset(),
+    "disabled_main_domains": frozenset(),
+    "selected_failure_types": frozenset(),
+    "effective_groups": (),
+}
 _DOMAIN_RUNTIME_SESSION = {
     "counting_enabled": False,
     "last_started_at": 0.0,
@@ -125,8 +133,78 @@ def _parse_mail_domain_items(raw_value: Any) -> list[str]:
     return domains
 
 
+def _get_mail_domain_config_cache() -> dict[str, Any]:
+    mail_domains_raw = str(getattr(cfg, 'MAIL_DOMAINS', '') or '')
+    disabled_raw = tuple(
+        str(item or '').strip().lower().strip('.')
+        for item in (getattr(cfg, 'DISABLED_MAIL_DOMAINS', []) or [])
+    )
+    selected_failure_raw = tuple(
+        str(item or '').strip().lower()
+        for item in (getattr(cfg, 'MAIL_DOMAIN_FAILURE_TYPES', []) or [])
+    )
+    grouping_enabled = bool(
+        is_mail_domain_runtime_control_enabled()
+        and getattr(cfg, 'ENABLE_MAIL_DOMAIN_GROUPING', False)
+    )
+    group_count = max(1, min(10, int(getattr(cfg, 'MAIL_DOMAIN_GROUP_COUNT', 2) or 2)))
+    group_mode = str(getattr(cfg, 'MAIL_DOMAIN_GROUP_MODE', 'auto') or 'auto').strip().lower()
+    group_strategy = str(getattr(cfg, 'MAIL_DOMAIN_GROUP_STRATEGY', 'round_robin') or 'round_robin').strip().lower()
+    raw_groups = tuple(str(item or '') for item in (getattr(cfg, 'MAIL_DOMAIN_GROUPS', []) or []))
+
+    cache_key = (
+        mail_domains_raw,
+        disabled_raw,
+        selected_failure_raw,
+        grouping_enabled,
+        group_count,
+        group_mode,
+        group_strategy,
+        raw_groups,
+    )
+    cached_key = _MAIL_DOMAIN_CONFIG_CACHE.get("key")
+    if cached_key == cache_key:
+        return _MAIL_DOMAIN_CONFIG_CACHE
+
+    main_domains = tuple(_parse_mail_domain_items(mail_domains_raw))
+    main_domain_set = frozenset(main_domains)
+
+    disabled_main_domains = frozenset(
+        domain
+        for domain in disabled_raw
+        if domain in main_domain_set
+    )
+
+    selected_failure_types = frozenset(
+        item for item in selected_failure_raw
+        if item in _MAIL_DOMAIN_FAILURE_TYPES
+    )
+
+    effective_groups: tuple[tuple[str, ...], ...]
+    if not grouping_enabled:
+        effective_groups = (main_domains,) if main_domains else ()
+    elif group_mode == 'manual':
+        groups = _build_manual_domain_groups(list(main_domains), list(raw_groups))
+        effective_groups = tuple(tuple(group) for group in (groups if groups else ([list(main_domains)] if main_domains else [])))
+    else:
+        groups = _build_auto_domain_groups(list(main_domains), group_count)
+        effective_groups = tuple(tuple(group) for group in (groups if groups else ([list(main_domains)] if main_domains else [])))
+
+    _MAIL_DOMAIN_CONFIG_CACHE["key"] = cache_key
+    _MAIL_DOMAIN_CONFIG_CACHE["main_domains"] = main_domains
+    _MAIL_DOMAIN_CONFIG_CACHE["main_domain_set"] = main_domain_set
+    _MAIL_DOMAIN_CONFIG_CACHE["disabled_main_domains"] = disabled_main_domains
+    _MAIL_DOMAIN_CONFIG_CACHE["selected_failure_types"] = selected_failure_types
+    _MAIL_DOMAIN_CONFIG_CACHE["effective_groups"] = effective_groups
+    return _MAIL_DOMAIN_CONFIG_CACHE
+
+
 def _get_configured_main_domains() -> list[str]:
-    return _parse_mail_domain_items(getattr(cfg, 'MAIL_DOMAINS', '') or '')
+    return list(_get_mail_domain_config_cache()["main_domains"])
+
+
+def get_configured_main_domains_snapshot() -> list[str]:
+    return list(_get_mail_domain_config_cache()["main_domains"])
 
 
 def _is_mail_domain_grouping_enabled() -> bool:
@@ -168,23 +246,28 @@ def _build_manual_domain_groups(main_domains: list[str], raw_groups: list[Any]) 
 
 
 def _get_effective_domain_groups(main_domains: list[str]) -> list[list[str]]:
+    normalized_domains = tuple(_normalize_main_domain(domain) for domain in main_domains)
+    cache = _get_mail_domain_config_cache()
+    cached_main_domains = cache["main_domains"]
+    if normalized_domains == cached_main_domains:
+        return [list(group) for group in cache["effective_groups"]]
     if not _is_mail_domain_grouping_enabled():
-        return [main_domains] if main_domains else []
+        return [list(normalized_domains)] if normalized_domains else []
     group_count = max(1, min(10, int(getattr(cfg, 'MAIL_DOMAIN_GROUP_COUNT', 2) or 2)))
     group_mode = str(getattr(cfg, 'MAIL_DOMAIN_GROUP_MODE', 'auto') or 'auto').strip().lower()
+    main_domain_list = [domain for domain in normalized_domains if domain]
     if group_mode == 'manual':
-        groups = _build_manual_domain_groups(main_domains, getattr(cfg, 'MAIL_DOMAIN_GROUPS', []) or [])
-        return groups if groups else [main_domains]
-    groups = _build_auto_domain_groups(main_domains, group_count)
-    return groups if groups else [main_domains]
+        groups = _build_manual_domain_groups(main_domain_list, getattr(cfg, 'MAIL_DOMAIN_GROUPS', []) or [])
+        return groups if groups else [main_domain_list]
+    groups = _build_auto_domain_groups(main_domain_list, group_count)
+    return groups if groups else [main_domain_list]
 
 
 def _get_mail_domain_group_label(domain: str) -> str:
     normalized = _normalize_main_domain(domain)
     if not normalized or not getattr(cfg, 'ENABLE_MAIL_DOMAIN_GROUPING', False):
         return ""
-    main_domains = _get_configured_main_domains()
-    groups = _get_effective_domain_groups(main_domains)
+    groups = _get_mail_domain_config_cache()["effective_groups"]
     for index, group in enumerate(groups):
         if normalized in group:
             return f"[{index + 1}]"
@@ -207,7 +290,7 @@ def _normalize_main_domain(domain: str) -> str:
         if not text:
             return ""
 
-    configured = _get_configured_main_domains()
+    configured = _get_mail_domain_config_cache()["main_domains"]
     for root in configured:
         if text == root or text.endswith(f".{root}"):
             return root
@@ -215,12 +298,7 @@ def _normalize_main_domain(domain: str) -> str:
 
 
 def _get_disabled_main_domains() -> set[str]:
-    normalized = set()
-    for domain in getattr(cfg, 'DISABLED_MAIL_DOMAINS', []) or []:
-        root = _normalize_main_domain(domain)
-        if root:
-            normalized.add(root)
-    return normalized
+    return set(_get_mail_domain_config_cache()["disabled_main_domains"])
 
 
 def _all_configured_main_domains_disabled() -> bool:
@@ -420,33 +498,27 @@ def _select_exhaust_then_next_group_candidates(groups: list[list[str]], now: flo
     return []
 
 
+def _select_group_candidates_from_groups(groups: list[list[str]], now: float) -> list[str]:
+    if not groups:
+        return []
+    if _get_mail_domain_group_strategy() == 'exhaust_then_next':
+        return _select_exhaust_then_next_group_candidates(groups, now)
+    return _select_round_robin_group_candidates(groups, now)
+
+
 def _select_group_candidates(main_domains: list[str], now: float) -> list[str]:
     groups = _get_effective_domain_groups(main_domains)
-    if not groups:
-        return []
-    if _get_mail_domain_group_strategy() == 'exhaust_then_next':
-        return _select_exhaust_then_next_group_candidates(groups, now)
-    return _select_round_robin_group_candidates(groups, now)
-
-
-def _select_batch_group_candidates(main_domains: list[str], now: float) -> list[str]:
-    groups = _get_effective_domain_groups(main_domains)
-    if not groups:
-        return []
-    if _get_mail_domain_group_strategy() == 'exhaust_then_next':
-        return _select_exhaust_then_next_group_candidates(groups, now)
-    return _select_round_robin_group_candidates(groups, now)
+    return _select_group_candidates_from_groups(groups, now)
 
 
 def _select_first_available_main_domain(main_domains: list[str], now: float, batch_size: int = 1) -> Optional[str]:
+    disabled_domains = _get_disabled_main_domains()
     for domain in main_domains:
         normalized = _normalize_main_domain(domain)
-        if not normalized:
+        if not normalized or normalized in disabled_domains:
             continue
         state = _DOMAIN_RUNTIME_STATE.setdefault(normalized, _new_domain_runtime_state())
         if float(state.get("cooldown_until") or 0.0) > now:
-            continue
-        if normalized in _get_disabled_main_domains():
             continue
         return _mark_selected_domain_used(normalized, now, increment=batch_size)
     return None
@@ -468,7 +540,8 @@ def _preallocate_main_domains_locked(main_domains: list[str], batch_size: int, n
         selected = _select_first_available_main_domain(main_domains, now, batch_size=batch_size)
         return [selected] * batch_size if selected else [None] * batch_size
 
-    batch_candidates = _select_batch_group_candidates(main_domains, now) if _is_mail_domain_grouping_enabled() else _get_available_main_domain_candidates(main_domains, now)
+    groups = _get_effective_domain_groups(main_domains) if _is_mail_domain_grouping_enabled() else []
+    batch_candidates = _select_group_candidates_from_groups(groups, now) if groups else _get_available_main_domain_candidates(main_domains, now)
     enforce_unique_within_batch = len(set(batch_candidates)) >= batch_size
     used_in_batch: set[str] = set()
 
@@ -526,12 +599,7 @@ def _apply_domain_cooldown(state: dict, reason: str, cooldown_sec: int) -> float
 
 
 def _get_selected_mail_domain_failure_types() -> set[str]:
-    selected = {
-        str(item or "").strip().lower()
-        for item in (getattr(cfg, 'MAIL_DOMAIN_FAILURE_TYPES', []) or [])
-        if str(item or "").strip()
-    }
-    return {item for item in selected if item in _MAIL_DOMAIN_FAILURE_TYPES}
+    return set(_get_mail_domain_config_cache()["selected_failure_types"])
 
 
 def _recalculate_domain_fail_count(state: dict, selected_failure_types: Optional[set[str]] = None) -> int:
@@ -575,6 +643,7 @@ def record_domain_failure(domain: str, reason: str) -> dict:
 
     threshold = int(getattr(cfg, 'MAIL_DOMAIN_FAIL_THRESHOLD', 0) or 0)
     cooldown_sec = int(getattr(cfg, 'MAIL_DOMAIN_FAIL_COOLDOWN_SEC', 0) or 0)
+    selected_failure_types = _get_selected_mail_domain_failure_types()
     now = time.time()
 
     with _DOMAIN_RUNTIME_LOCK:
@@ -585,19 +654,19 @@ def record_domain_failure(domain: str, reason: str) -> dict:
             failure_counts = {}
             state["failure_counts"] = failure_counts
         cooldown_until = float(state.get("cooldown_until") or 0.0)
-        _recalculate_domain_fail_count(state)
+        _recalculate_domain_fail_count(state, selected_failure_types)
         state["last_failure_at"] = now
         state["last_failure_reason"] = normalized_reason
 
         if cooldown_until > now:
-            _recalculate_domain_fail_count(state)
+            _recalculate_domain_fail_count(state, selected_failure_types)
             state["fail_count"] = 0
             if not state.get("cooldown_reason"):
                 state["cooldown_reason"] = normalized_reason
             return _build_domain_result(normalized, state, cooldown_until, False)
 
         failure_counts[normalized_reason] = int(failure_counts.get(normalized_reason) or 0) + 1
-        fail_count = _recalculate_domain_fail_count(state)
+        fail_count = _recalculate_domain_fail_count(state, selected_failure_types)
         cooldown_triggered = False
         if threshold > 0 and fail_count >= threshold:
             cooldown_until = _apply_domain_cooldown(state, normalized_reason, cooldown_sec)
@@ -612,6 +681,7 @@ def record_domain_success(domain: str) -> dict:
     if not normalized or not is_mail_domain_runtime_control_enabled() or not _is_mail_domain_runtime_tracking_active():
         return {}
 
+    selected_failure_types = _get_selected_mail_domain_failure_types()
     now = time.time()
 
     with _DOMAIN_RUNTIME_LOCK:
@@ -619,15 +689,15 @@ def record_domain_success(domain: str) -> dict:
         state = _DOMAIN_RUNTIME_STATE.setdefault(normalized, _new_domain_runtime_state())
         state["success_count"] = int(state.get("success_count") or 0) + 1
         state["last_success_at"] = now
-        _recalculate_domain_fail_count(state)
+        _recalculate_domain_fail_count(state, selected_failure_types)
         cooldown_until = float(state.get("cooldown_until") or 0.0)
         return _build_domain_result(normalized, state, cooldown_until, False)
 
 
 def _build_domain_runtime_row(domain: str, state: dict, now: float) -> dict:
     cooldown_until = float(state.get("cooldown_until") or 0.0)
-    is_disabled = is_mail_domain_disabled(domain)
-    _recalculate_domain_fail_count(state)
+    is_disabled = domain in _get_disabled_main_domains()
+    _recalculate_domain_fail_count(state, _get_selected_mail_domain_failure_types())
     return {
         "domain": domain,
         "fail_count": int(state.get("fail_count") or 0),
@@ -770,13 +840,33 @@ def get_mail_domain_runtime_stats() -> list[dict]:
         return []
 
     sync_mail_domain_runtime_state_with_config()
+    selected_failure_types = _get_selected_mail_domain_failure_types()
+    disabled_domains = _get_disabled_main_domains()
     now = time.time()
     rows = []
     with _DOMAIN_RUNTIME_LOCK:
         _prune_expired_domain_records(now)
         for domain in sorted(_DOMAIN_RUNTIME_STATE.keys()):
             state = _DOMAIN_RUNTIME_STATE[domain]
-            rows.append(_build_domain_runtime_row(domain, state, now))
+            cooldown_until = float(state.get("cooldown_until") or 0.0)
+            _recalculate_domain_fail_count(state, selected_failure_types)
+            rows.append({
+                "domain": domain,
+                "fail_count": int(state.get("fail_count") or 0),
+                "success_count": int(state.get("success_count") or 0),
+                "pick_count": max(0, int(state.get("pick_count") or 0)),
+                "failure_counts": dict(state.get("failure_counts") or {}),
+                "last_failure_reason": str(state.get("last_failure_reason") or ""),
+                "cooldown_until": cooldown_until,
+                "cooldown_remaining_sec": max(0, int(cooldown_until - now)) if cooldown_until > now else 0,
+                "cooldown_reason": str(state.get("cooldown_reason") or ""),
+                "is_available": cooldown_until <= now,
+                "is_disabled": domain in disabled_domains,
+                "is_enabled": domain not in disabled_domains,
+                "last_used_at": float(state.get("last_used_at") or 0.0),
+                "last_failure_at": float(state.get("last_failure_at") or 0.0),
+                "last_success_at": float(state.get("last_success_at") or 0.0),
+            })
     return rows
 
 
