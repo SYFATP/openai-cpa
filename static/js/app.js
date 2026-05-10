@@ -46,6 +46,18 @@ function normalizeBooleanLike(value, defaultValue = false) {
     return defaultValue;
 }
 
+function normalizeMailDomainCsv(value) {
+    const seen = new Set();
+    return String(value || '')
+        .split(',')
+        .map(part => String(part || '').trim().toLowerCase().replace(/^\.+|\.+$/g, ''))
+        .filter(part => {
+            if (!part || seen.has(part)) return false;
+            seen.add(part);
+            return true;
+        });
+}
+
 createApp({
     data() {
         return {
@@ -337,6 +349,25 @@ createApp({
         },
         cooldownMailDomainCount() {
             return this.mailDomainRuntimeStats.filter(item => item && !item.is_available).length;
+        },
+        normalizedMailDomains() {
+            if (!this.config) return [];
+            return normalizeMailDomainCsv(this.config.mail_domains);
+        },
+        autoMailDomainGroupsPreview() {
+            if (!this.config || !this.config.enable_mail_domain_grouping || this.config.mail_domain_group_mode !== 'auto') {
+                return [];
+            }
+            const domains = this.normalizedMailDomains;
+            const groupCount = Math.min(10, Math.max(1, parseInt(this.config.mail_domain_group_count, 10) || 0));
+            if (domains.length === 0 || groupCount < 1 || groupCount > domains.length) {
+                return [];
+            }
+            const groups = Array.from({ length: groupCount }, () => []);
+            domains.forEach((domain, index) => {
+                groups[index % groupCount].push(domain);
+            });
+            return groups;
         }
     },
     methods: {
@@ -716,6 +747,21 @@ createApp({
                 )];
                 if (this.config.enable_mail_domain_runtime_control === undefined) this.config.enable_mail_domain_runtime_control = false;
                 this.config.enable_mail_domain_runtime_control = normalizeBooleanLike(this.config.enable_mail_domain_runtime_control, false);
+                if (this.config.enable_mail_domain_grouping === undefined) this.config.enable_mail_domain_grouping = false;
+                this.config.enable_mail_domain_grouping = normalizeBooleanLike(this.config.enable_mail_domain_grouping, false);
+                if (this.config.mail_domain_group_count === undefined) this.config.mail_domain_group_count = 2;
+                this.config.mail_domain_group_count = Math.min(10, Math.max(1, parseInt(this.config.mail_domain_group_count, 10) || 2));
+                if (this.config.mail_domain_group_mode === undefined) this.config.mail_domain_group_mode = 'auto';
+                this.config.mail_domain_group_mode = ['auto', 'manual'].includes(String(this.config.mail_domain_group_mode || '').trim().toLowerCase())
+                    ? String(this.config.mail_domain_group_mode || '').trim().toLowerCase()
+                    : 'auto';
+                if (!Array.isArray(this.config.mail_domain_groups)) this.config.mail_domain_groups = [];
+                this.config.mail_domain_groups = this.config.mail_domain_groups
+                    .slice(0, this.config.mail_domain_group_count)
+                    .map(item => normalizeMailDomainCsv(item).join(','));
+                while (this.config.mail_domain_groups.length < this.config.mail_domain_group_count) {
+                    this.config.mail_domain_groups.push('');
+                }
                 if (this.config.mail_domain_pinpoint_burst_mode === undefined) this.config.mail_domain_pinpoint_burst_mode = false;
                 this.config.mail_domain_pinpoint_burst_mode = normalizeBooleanLike(this.config.mail_domain_pinpoint_burst_mode, false);
                 if (this.config.mail_domain_prefer_low_failure_mode === undefined) this.config.mail_domain_prefer_low_failure_mode = false;
@@ -723,6 +769,7 @@ createApp({
                 if (this.config.mail_domain_pinpoint_burst_mode && this.config.mail_domain_prefer_low_failure_mode) {
                     this.config.mail_domain_prefer_low_failure_mode = false;
                 }
+                this.applyMailDomainModeConstraints();
                 if (!Array.isArray(this.config.mail_domain_failure_types)) this.config.mail_domain_failure_types = ['discarded_email'];
                 this.config.mail_domain_failure_types = [...new Set(
                     this.config.mail_domain_failure_types
@@ -735,23 +782,96 @@ createApp({
             } catch (e) {}
         },
         applyMailDomainModeExclusion(changedMode = '') {
+            this.applyMailDomainModeConstraints(changedMode);
+        },
+        applyMailDomainModeConstraints(changedMode = '') {
             if (!this.config) return;
+            this.config.enable_mail_domain_grouping = normalizeBooleanLike(this.config.enable_mail_domain_grouping, false);
             this.config.mail_domain_pinpoint_burst_mode = normalizeBooleanLike(this.config.mail_domain_pinpoint_burst_mode, false);
             this.config.mail_domain_prefer_low_failure_mode = normalizeBooleanLike(this.config.mail_domain_prefer_low_failure_mode, false);
-            if (!(this.config.mail_domain_pinpoint_burst_mode && this.config.mail_domain_prefer_low_failure_mode)) {
-                return;
+            this.config.mail_domain_group_count = Math.min(10, Math.max(1, parseInt(this.config.mail_domain_group_count, 10) || 2));
+            this.config.mail_domain_group_mode = ['auto', 'manual'].includes(String(this.config.mail_domain_group_mode || '').trim().toLowerCase())
+                ? String(this.config.mail_domain_group_mode || '').trim().toLowerCase()
+                : 'auto';
+            if (!Array.isArray(this.config.mail_domain_groups)) {
+                this.config.mail_domain_groups = [];
             }
-            if (changedMode === 'pinpoint') {
-                this.config.mail_domain_prefer_low_failure_mode = false;
-                return;
+            this.config.mail_domain_groups = this.config.mail_domain_groups
+                .slice(0, this.config.mail_domain_group_count)
+                .map(item => normalizeMailDomainCsv(item).join(','));
+            while (this.config.mail_domain_groups.length < this.config.mail_domain_group_count) {
+                this.config.mail_domain_groups.push('');
             }
-            if (changedMode === 'low_failure') {
+            if (changedMode === 'grouping' && this.config.enable_mail_domain_grouping) {
                 this.config.mail_domain_pinpoint_burst_mode = false;
-                return;
             }
-            this.config.mail_domain_prefer_low_failure_mode = false;
+            if (changedMode === 'pinpoint' && this.config.mail_domain_pinpoint_burst_mode) {
+                this.config.enable_mail_domain_grouping = false;
+            }
+            if (this.config.enable_mail_domain_grouping && this.config.mail_domain_pinpoint_burst_mode) {
+                if (changedMode === 'pinpoint') {
+                    this.config.enable_mail_domain_grouping = false;
+                } else {
+                    this.config.mail_domain_pinpoint_burst_mode = false;
+                }
+            }
+            if (this.config.mail_domain_pinpoint_burst_mode && this.config.mail_domain_prefer_low_failure_mode) {
+                if (changedMode === 'pinpoint') {
+                    this.config.mail_domain_prefer_low_failure_mode = false;
+                } else if (changedMode === 'low_failure') {
+                    this.config.mail_domain_pinpoint_burst_mode = false;
+                } else {
+                    this.config.mail_domain_prefer_low_failure_mode = false;
+                }
+            }
         },
-
+        validateMailDomainGrouping() {
+            if (!this.config) return '';
+            this.applyMailDomainModeConstraints();
+            if (!this.config.enable_mail_domain_grouping) {
+                return '';
+            }
+            const masterDomains = normalizeMailDomainCsv(this.config.mail_domains);
+            if (masterDomains.length === 0) {
+                return '启用域名分组前请先填写 mail_domains';
+            }
+            const groupCount = Math.min(10, Math.max(1, parseInt(this.config.mail_domain_group_count, 10) || 0));
+            if (groupCount < 1 || groupCount > 10) {
+                return '分组数量必须在 1 到 10 之间';
+            }
+            if (groupCount > masterDomains.length) {
+                return '分组数量不能大于有效主域名数量';
+            }
+            if (this.config.mail_domain_group_mode !== 'manual') {
+                return '';
+            }
+            const masterSet = new Set(masterDomains);
+            const assigned = new Set();
+            for (let index = 0; index < groupCount; index += 1) {
+                const domains = normalizeMailDomainCsv(this.config.mail_domain_groups[index] || '');
+                if (domains.length === 0) {
+                    return `第 ${index + 1} 组至少需要填写一个域名`;
+                }
+                for (const domain of domains) {
+                    if (!masterSet.has(domain)) {
+                        return `第 ${index + 1} 组存在未配置在 mail_domains 中的域名: ${domain}`;
+                    }
+                    if (assigned.has(domain)) {
+                        return `域名 ${domain} 不能重复出现在多个分组中`;
+                    }
+                    assigned.add(domain);
+                }
+            }
+            const missing = masterDomains.filter(domain => !assigned.has(domain));
+            if (missing.length > 0) {
+                return `手动分组未覆盖所有主域名，缺少: ${missing.join(', ')}`;
+            }
+            return '';
+        },
+        normalizeMailDomainGroupInput(index) {
+            if (!this.config || !Array.isArray(this.config.mail_domain_groups)) return;
+            this.config.mail_domain_groups[index] = normalizeMailDomainCsv(this.config.mail_domain_groups[index]).join(',');
+        },
         async fetchMailDomainRuntimeStats(options = {}) {
             const { silent = false } = options;
             if (!this.config?.enable_mail_domain_runtime_control) {
@@ -888,12 +1008,16 @@ createApp({
                     this.config.local_microsoft.suffix_len_max = maxLen;
                 }
                 this.config.enable_mail_domain_runtime_control = normalizeBooleanLike(this.config.enable_mail_domain_runtime_control, false);
+                this.config.enable_mail_domain_grouping = normalizeBooleanLike(this.config.enable_mail_domain_grouping, false);
                 if (this.config.mail_domain_pinpoint_burst_mode === undefined) this.config.mail_domain_pinpoint_burst_mode = false;
                 this.config.mail_domain_pinpoint_burst_mode = normalizeBooleanLike(this.config.mail_domain_pinpoint_burst_mode, false);
                 if (this.config.mail_domain_prefer_low_failure_mode === undefined) this.config.mail_domain_prefer_low_failure_mode = false;
                 this.config.mail_domain_prefer_low_failure_mode = normalizeBooleanLike(this.config.mail_domain_prefer_low_failure_mode, false);
-                if (this.config.mail_domain_pinpoint_burst_mode && this.config.mail_domain_prefer_low_failure_mode) {
-                    this.config.mail_domain_prefer_low_failure_mode = false;
+                this.applyMailDomainModeConstraints();
+                const mailDomainGroupingError = this.validateMailDomainGrouping();
+                if (mailDomainGroupingError) {
+                    this.showToast(mailDomainGroupingError, 'warning');
+                    return;
                 }
                 if (!Array.isArray(this.config.mail_domain_failure_types)) {
                     this.config.mail_domain_failure_types = ['discarded_email'];

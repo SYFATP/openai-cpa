@@ -877,7 +877,7 @@
                                             <input type="checkbox" v-model="config.mail_domain_pinpoint_burst_mode" @change="applyMailDomainModeExclusion('pinpoint')" class="mt-0.5 rounded border-slate-300 text-amber-500 focus:ring-amber-500/30">
                                             <div>
                                                 <div class="text-sm font-black text-slate-700">定点爆破</div>
-                                                <div class="text-[11px] text-slate-400 mt-1">当前批次共用同一主域，按域名顺序轮转；跳过禁用和冷却域名。与“低异常优先”互斥，但可同时关闭。</div>
+                                                <div class="text-[11px] text-slate-400 mt-1">当前批次共用同一主域，按域名顺序轮转；跳过禁用和冷却域名。与“低异常优先”“域名分组”互斥，但可同时关闭。</div>
                                             </div>
                                         </label>
 
@@ -885,9 +885,58 @@
                                             <input type="checkbox" v-model="config.mail_domain_prefer_low_failure_mode" @change="applyMailDomainModeExclusion('low_failure')" class="mt-0.5 rounded border-slate-300 text-amber-500 focus:ring-amber-500/30">
                                             <div>
                                                 <div class="text-sm font-black text-slate-700">低异常优先</div>
-                                                <div class="text-[11px] text-slate-400 mt-1">优先选择异常更少的可用主域；同分时优先较少使用的域名。与“定点爆破”互斥，但可同时关闭。</div>
+                                                <div class="text-[11px] text-slate-400 mt-1">优先选择异常更少的可用主域；同分时优先较少使用的域名。与“定点爆破”互斥，可与“域名分组”同时开启。</div>
                                             </div>
                                         </label>
+
+                                        <div class="p-4 bg-white border border-slate-200 rounded-xl shadow-sm space-y-4">
+                                            <label class="flex items-start gap-3 cursor-pointer">
+                                                <input type="checkbox" v-model="config.enable_mail_domain_grouping" @change="applyMailDomainModeExclusion('grouping')" class="mt-0.5 rounded border-slate-300 text-amber-500 focus:ring-amber-500/30">
+                                                <div>
+                                                    <div class="text-sm font-black text-slate-700">域名分组</div>
+                                                    <div class="text-[11px] text-slate-400 mt-1">按组轮换主域；与“定点爆破”互斥，可配合“低异常优先”。</div>
+                                                </div>
+                                            </label>
+                                            <div v-if="config.enable_mail_domain_grouping" class="space-y-4 border-t border-slate-100 pt-4">
+                                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                    <div>
+                                                        <label class="block text-slate-700 text-xs font-black mb-2 uppercase tracking-wider">组数</label>
+                                                        <input type="number" min="1" max="10" v-model.number="config.mail_domain_group_count" @change="applyMailDomainModeConstraints()"
+                                                               class="w-full appearance-none bg-white border border-slate-200 text-slate-700 rounded-lg py-2.5 px-3 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-colors shadow-sm"
+                                                               placeholder="例如 2">
+                                                        <p class="text-[11px] text-slate-400 mt-2 font-medium">最多 10 组，自动模式下不能超过有效主域数量。</p>
+                                                    </div>
+                                                    <div>
+                                                        <label class="block text-slate-700 text-xs font-black mb-2 uppercase tracking-wider">模式</label>
+                                                        <select v-model="config.mail_domain_group_mode" @change="applyMailDomainModeConstraints()"
+                                                                class="w-full appearance-none bg-white border border-slate-200 text-slate-700 rounded-lg py-2.5 px-3 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-colors shadow-sm">
+                                                            <option value="auto">自动</option>
+                                                            <option value="manual">手动</option>
+                                                        </select>
+                                                        <p class="text-[11px] text-slate-400 mt-2 font-medium">自动按 `mail_domains` 顺序分组；手动模式需覆盖全部主域。</p>
+                                                    </div>
+                                                </div>
+                                                <div v-if="config.mail_domain_group_mode === 'manual'" class="space-y-3">
+                                                    <div v-for="(_, index) in config.mail_domain_groups" :key="`mail-domain-group-${index}`">
+                                                        <label class="block text-slate-700 text-xs font-black mb-2 uppercase tracking-wider">第 {{ index + 1 }} 组</label>
+                                                        <input type="text" v-model="config.mail_domain_groups[index]" @blur="normalizeMailDomainGroupInput(index)"
+                                                               class="w-full appearance-none bg-white border border-slate-200 text-slate-700 font-mono rounded-lg py-2.5 px-3 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-colors shadow-sm"
+                                                               placeholder="例如 domain1.com,domain2.xyz">
+                                                    </div>
+                                                    <p class="text-[11px] text-slate-400 font-medium">录入格式与 `mail_domains` 一致；仅允许填写已配置主域名，且不能跨组重复。</p>
+                                                </div>
+                                                <div v-else class="space-y-3">
+                                                    <div v-if="autoMailDomainGroupsPreview.length > 0" class="space-y-3">
+                                                        <div v-for="(group, index) in autoMailDomainGroupsPreview" :key="`mail-domain-auto-group-${index}`">
+                                                            <label class="block text-slate-700 text-xs font-black mb-2 uppercase tracking-wider">第 {{ index + 1 }} 组</label>
+                                                            <input type="text" :value="group.join(',')" readonly
+                                                                   class="w-full appearance-none bg-slate-100 border border-slate-200 text-slate-500 font-mono rounded-lg py-2.5 px-3 shadow-sm cursor-not-allowed">
+                                                        </div>
+                                                    </div>
+                                                    <p v-else class="text-[11px] text-amber-600 font-medium bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">请先填写有效的 `mail_domains`，且分组数量不能大于有效主域名数量。</p>
+                                                </div>
+                                            </div>
+                                        </div>
 
                                         <div>
                                             <label class="block text-slate-700 text-xs font-black mb-3 uppercase tracking-wider">异常判断逻辑</label>

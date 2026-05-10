@@ -52,6 +52,83 @@ class ExtResultReq(BaseModel):
     error_type: Optional[str] = "failed"
 
 
+def _normalize_mail_domain_items(raw_value: Any) -> list[str]:
+    seen = set()
+    domains = []
+    for part in str(raw_value or "").split(','):
+        text = str(part or "").strip().lower().strip('.')
+        if text and text not in seen:
+            seen.add(text)
+            domains.append(text)
+    return domains
+
+
+def _normalize_bool(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "on"}
+    if isinstance(value, (int, float)):
+        return value != 0
+    return False
+
+
+def _normalize_mail_domain_grouping_payload(config_data: dict) -> Optional[str]:
+    master_domains = _normalize_mail_domain_items(config_data.get("mail_domains", ""))
+    master_domain_set = set(master_domains)
+
+    config_data["enable_mail_domain_grouping"] = _normalize_bool(config_data.get("enable_mail_domain_grouping", False))
+
+    try:
+        group_count = int(config_data.get("mail_domain_group_count", 2) or 2)
+    except Exception:
+        group_count = 2
+    group_count = max(1, min(10, group_count))
+    config_data["mail_domain_group_count"] = group_count
+
+    group_mode = str(config_data.get("mail_domain_group_mode", "auto") or "auto").strip().lower()
+    if group_mode not in {"auto", "manual"}:
+        group_mode = "auto"
+    config_data["mail_domain_group_mode"] = group_mode
+
+    raw_groups = config_data.get("mail_domain_groups", [])
+    if not isinstance(raw_groups, list):
+        raw_groups = []
+    normalized_groups = [
+        ",".join(_normalize_mail_domain_items(item))
+        for item in raw_groups[:group_count]
+    ]
+    while len(normalized_groups) < group_count:
+        normalized_groups.append("")
+    config_data["mail_domain_groups"] = normalized_groups
+
+    if config_data["enable_mail_domain_grouping"]:
+        config_data["mail_domain_pinpoint_burst_mode"] = False
+        if not master_domains:
+            return "启用域名分组前请先填写 mail_domains"
+        if group_count > len(master_domains):
+            return "分组数量不能大于有效主域名数量"
+        if group_mode == "manual":
+            assigned = []
+            assigned_set = set()
+            for index, raw_group in enumerate(normalized_groups, start=1):
+                domains = _normalize_mail_domain_items(raw_group)
+                if not domains:
+                    return f"第 {index} 组至少需要填写一个域名"
+                for domain in domains:
+                    if domain not in master_domain_set:
+                        return f"第 {index} 组存在未配置在 mail_domains 中的域名: {domain}"
+                    if domain in assigned_set:
+                        return f"域名 {domain} 不能重复出现在多个分组中"
+                    assigned.append(domain)
+                    assigned_set.add(domain)
+            if assigned_set != master_domain_set:
+                missing = [domain for domain in master_domains if domain not in assigned_set]
+                if missing:
+                    return f"手动分组未覆盖所有主域名，缺少: {', '.join(missing)}"
+    return None
+
+
 def _sanitize_local_microsoft_config(local_ms: Any) -> dict:
     data = dict(local_ms) if isinstance(local_ms, dict) else {}
     data.setdefault("enable_fission", False)
@@ -324,6 +401,9 @@ async def save_config(new_config: dict, token: str = Depends(verify_token)):
         new_config["mail_domain_prefer_low_failure_mode"] = normalize_bool(new_config.get("mail_domain_prefer_low_failure_mode", False))
         if new_config["mail_domain_pinpoint_burst_mode"] and new_config["mail_domain_prefer_low_failure_mode"]:
             new_config["mail_domain_prefer_low_failure_mode"] = False
+        grouping_error = _normalize_mail_domain_grouping_payload(new_config)
+        if grouping_error:
+            return {"status": "error", "message": grouping_error}
         reload_all_configs(new_config_dict=new_config)
         mail_service.sync_mail_domain_runtime_state_with_config()
 

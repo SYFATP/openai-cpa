@@ -57,6 +57,7 @@ _DOMAIN_RUNTIME_SESSION = {
     "last_started_at": 0.0,
     "last_stopped_at": 0.0,
     "tie_break_cursor": 0,
+    "group_cursor": 0,
 }
 
 _thread_data = threading.local()
@@ -112,15 +113,62 @@ def pop_last_domain_failure_event() -> dict:
     return dict(event) if isinstance(event, dict) else {}
 
 
-def _get_configured_main_domains() -> list[str]:
+def _parse_mail_domain_items(raw_value: Any) -> list[str]:
     seen = set()
     domains = []
-    for part in str(getattr(cfg, 'MAIL_DOMAINS', '') or '').split(','):
+    for part in str(raw_value or '').split(','):
         root = str(part or '').strip().lower().strip('.')
         if root and root not in seen:
             seen.add(root)
             domains.append(root)
     return domains
+
+
+def _get_configured_main_domains() -> list[str]:
+    return _parse_mail_domain_items(getattr(cfg, 'MAIL_DOMAINS', '') or '')
+
+
+def _is_mail_domain_grouping_enabled() -> bool:
+    return bool(
+        is_mail_domain_runtime_control_enabled()
+        and getattr(cfg, 'ENABLE_MAIL_DOMAIN_GROUPING', False)
+    )
+
+
+def _build_auto_domain_groups(main_domains: list[str], group_count: int) -> list[list[str]]:
+    if not main_domains or group_count <= 0:
+        return []
+    groups = [[] for _ in range(group_count)]
+    for index, domain in enumerate(main_domains):
+        groups[index % group_count].append(domain)
+    return [group for group in groups if group]
+
+
+def _build_manual_domain_groups(main_domains: list[str], raw_groups: list[Any]) -> list[list[str]]:
+    master_set = set(main_domains)
+    groups = []
+    assigned = set()
+    for raw_group in raw_groups:
+        group = []
+        for domain in _parse_mail_domain_items(raw_group):
+            if domain in master_set and domain not in assigned:
+                assigned.add(domain)
+                group.append(domain)
+        if group:
+            groups.append(group)
+    return groups
+
+
+def _get_effective_domain_groups(main_domains: list[str]) -> list[list[str]]:
+    if not _is_mail_domain_grouping_enabled():
+        return [main_domains] if main_domains else []
+    group_count = max(1, min(10, int(getattr(cfg, 'MAIL_DOMAIN_GROUP_COUNT', 2) or 2)))
+    group_mode = str(getattr(cfg, 'MAIL_DOMAIN_GROUP_MODE', 'auto') or 'auto').strip().lower()
+    if group_mode == 'manual':
+        groups = _build_manual_domain_groups(main_domains, getattr(cfg, 'MAIL_DOMAIN_GROUPS', []) or [])
+        return groups if groups else [main_domains]
+    groups = _build_auto_domain_groups(main_domains, group_count)
+    return groups if groups else [main_domains]
 
 
 def _normalize_main_domain(domain: str) -> str:
@@ -193,6 +241,7 @@ def clear_mail_domain_runtime_stats() -> None:
         _DOMAIN_RUNTIME_SESSION["last_started_at"] = 0.0
         _DOMAIN_RUNTIME_SESSION["last_stopped_at"] = 0.0
         _DOMAIN_RUNTIME_SESSION["tie_break_cursor"] = 0
+        _DOMAIN_RUNTIME_SESSION["group_cursor"] = 0
 
 
 def _is_mail_domain_runtime_tracking_active() -> bool:
@@ -300,6 +349,20 @@ def _get_available_main_domain_candidates(main_domains: list[str], now: float) -
     return candidates
 
 
+def _select_group_candidates(main_domains: list[str], now: float) -> list[str]:
+    groups = _get_effective_domain_groups(main_domains)
+    if not groups:
+        return []
+    cursor = int(_DOMAIN_RUNTIME_SESSION.get("group_cursor", 0) or 0)
+    for offset in range(len(groups)):
+        group_index = (cursor + offset) % len(groups)
+        candidates = _get_available_main_domain_candidates(groups[group_index], now)
+        if candidates:
+            _DOMAIN_RUNTIME_SESSION["group_cursor"] = (group_index + 1) % len(groups)
+            return candidates
+    return []
+
+
 def _select_first_available_main_domain(main_domains: list[str], now: float, batch_size: int = 1) -> Optional[str]:
     for domain in main_domains:
         normalized = _normalize_main_domain(domain)
@@ -329,11 +392,11 @@ def _preallocate_main_domains_locked(main_domains: list[str], batch_size: int, n
     if getattr(cfg, 'MAIL_DOMAIN_PINPOINT_BURST_MODE', False):
         selected = _select_first_available_main_domain(main_domains, now, batch_size=batch_size)
         return [selected] * batch_size if selected else [None] * batch_size
-    unique_candidates = _get_available_main_domain_candidates(main_domains, now)
+    unique_candidates = _select_group_candidates(main_domains, now) if _is_mail_domain_grouping_enabled() else _get_available_main_domain_candidates(main_domains, now)
     enforce_unique_within_batch = len(set(unique_candidates)) >= batch_size
     used_in_batch: set[str] = set()
     for _ in range(batch_size):
-        candidates = _get_available_main_domain_candidates(main_domains, now)
+        candidates = _select_group_candidates(main_domains, now) if _is_mail_domain_grouping_enabled() else _get_available_main_domain_candidates(main_domains, now)
         if enforce_unique_within_batch:
             candidates = [domain for domain in candidates if domain not in used_in_batch]
         if not candidates:
@@ -358,7 +421,7 @@ def pick_available_main_domain(main_domains: list[str]) -> Optional[str]:
 
     with _DOMAIN_RUNTIME_LOCK:
         _prune_expired_domain_records(now)
-        candidates = _get_available_main_domain_candidates(main_domains, now)
+        candidates = _select_group_candidates(main_domains, now) if _is_mail_domain_grouping_enabled() else _get_available_main_domain_candidates(main_domains, now)
         if not candidates:
             return None
         selected = _select_main_domain_from_candidates(candidates)
