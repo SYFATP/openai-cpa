@@ -401,6 +401,15 @@ def _select_group_candidates(main_domains: list[str], now: float) -> list[str]:
     return _select_round_robin_group_candidates(groups, now)
 
 
+def _select_batch_group_candidates(main_domains: list[str], now: float) -> list[str]:
+    groups = _get_effective_domain_groups(main_domains)
+    if not groups:
+        return []
+    if _get_mail_domain_group_strategy() == 'exhaust_then_next':
+        return _select_exhaust_then_next_group_candidates(groups, now)
+    return _select_round_robin_group_candidates(groups, now)
+
+
 def _select_first_available_main_domain(main_domains: list[str], now: float, batch_size: int = 1) -> Optional[str]:
     for domain in main_domains:
         normalized = _normalize_main_domain(domain)
@@ -430,11 +439,13 @@ def _preallocate_main_domains_locked(main_domains: list[str], batch_size: int, n
     if getattr(cfg, 'MAIL_DOMAIN_PINPOINT_BURST_MODE', False):
         selected = _select_first_available_main_domain(main_domains, now, batch_size=batch_size)
         return [selected] * batch_size if selected else [None] * batch_size
-    unique_candidates = _select_group_candidates(main_domains, now) if _is_mail_domain_grouping_enabled() else _get_available_main_domain_candidates(main_domains, now)
-    enforce_unique_within_batch = len(set(unique_candidates)) >= batch_size
+
+    batch_candidates = _select_batch_group_candidates(main_domains, now) if _is_mail_domain_grouping_enabled() else _get_available_main_domain_candidates(main_domains, now)
+    enforce_unique_within_batch = len(set(batch_candidates)) >= batch_size
     used_in_batch: set[str] = set()
+
     for _ in range(batch_size):
-        candidates = _select_group_candidates(main_domains, now) if _is_mail_domain_grouping_enabled() else _get_available_main_domain_candidates(main_domains, now)
+        candidates = list(batch_candidates)
         if enforce_unique_within_batch:
             candidates = [domain for domain in candidates if domain not in used_in_batch]
         if not candidates:
