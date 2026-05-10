@@ -58,6 +58,7 @@ _DOMAIN_RUNTIME_SESSION = {
     "last_stopped_at": 0.0,
     "tie_break_cursor": 0,
     "group_cursor": 0,
+    "group_sticky_cursor": 0,
 }
 
 _thread_data = threading.local()
@@ -133,6 +134,13 @@ def _is_mail_domain_grouping_enabled() -> bool:
         is_mail_domain_runtime_control_enabled()
         and getattr(cfg, 'ENABLE_MAIL_DOMAIN_GROUPING', False)
     )
+
+
+def _get_mail_domain_group_strategy() -> str:
+    strategy = str(getattr(cfg, 'MAIL_DOMAIN_GROUP_STRATEGY', 'round_robin') or 'round_robin').strip().lower()
+    if strategy not in {'round_robin', 'exhaust_then_next'}:
+        return 'round_robin'
+    return strategy
 
 
 def _build_auto_domain_groups(main_domains: list[str], group_count: int) -> list[list[str]]:
@@ -242,6 +250,7 @@ def clear_mail_domain_runtime_stats() -> None:
         _DOMAIN_RUNTIME_SESSION["last_stopped_at"] = 0.0
         _DOMAIN_RUNTIME_SESSION["tie_break_cursor"] = 0
         _DOMAIN_RUNTIME_SESSION["group_cursor"] = 0
+        _DOMAIN_RUNTIME_SESSION["group_sticky_cursor"] = 0
 
 
 def _is_mail_domain_runtime_tracking_active() -> bool:
@@ -349,11 +358,12 @@ def _get_available_main_domain_candidates(main_domains: list[str], now: float) -
     return candidates
 
 
-def _select_group_candidates(main_domains: list[str], now: float) -> list[str]:
-    groups = _get_effective_domain_groups(main_domains)
+def _select_round_robin_group_candidates(groups: list[list[str]], now: float) -> list[str]:
     if not groups:
         return []
     cursor = int(_DOMAIN_RUNTIME_SESSION.get("group_cursor", 0) or 0)
+    if cursor >= len(groups) or cursor < 0:
+        cursor = 0
     for offset in range(len(groups)):
         group_index = (cursor + offset) % len(groups)
         candidates = _get_available_main_domain_candidates(groups[group_index], now)
@@ -361,6 +371,34 @@ def _select_group_candidates(main_domains: list[str], now: float) -> list[str]:
             _DOMAIN_RUNTIME_SESSION["group_cursor"] = (group_index + 1) % len(groups)
             return candidates
     return []
+
+
+def _select_exhaust_then_next_group_candidates(groups: list[list[str]], now: float) -> list[str]:
+    if not groups:
+        return []
+    cursor = int(_DOMAIN_RUNTIME_SESSION.get("group_sticky_cursor", 0) or 0)
+    if cursor >= len(groups) or cursor < 0:
+        cursor = 0
+    current_candidates = _get_available_main_domain_candidates(groups[cursor], now)
+    if current_candidates:
+        _DOMAIN_RUNTIME_SESSION["group_sticky_cursor"] = cursor
+        return current_candidates
+    for offset in range(1, len(groups) + 1):
+        group_index = (cursor + offset) % len(groups)
+        candidates = _get_available_main_domain_candidates(groups[group_index], now)
+        if candidates:
+            _DOMAIN_RUNTIME_SESSION["group_sticky_cursor"] = group_index
+            return candidates
+    return []
+
+
+def _select_group_candidates(main_domains: list[str], now: float) -> list[str]:
+    groups = _get_effective_domain_groups(main_domains)
+    if not groups:
+        return []
+    if _get_mail_domain_group_strategy() == 'exhaust_then_next':
+        return _select_exhaust_then_next_group_candidates(groups, now)
+    return _select_round_robin_group_candidates(groups, now)
 
 
 def _select_first_available_main_domain(main_domains: list[str], now: float, batch_size: int = 1) -> Optional[str]:

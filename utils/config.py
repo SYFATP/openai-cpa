@@ -599,6 +599,9 @@ def reload_all_configs(new_config_dict=None):
     MAIL_DOMAIN_GROUP_MODE = str(_c.get("mail_domain_group_mode", "auto") or "auto").strip().lower()
     if MAIL_DOMAIN_GROUP_MODE not in {"auto", "manual"}:
         MAIL_DOMAIN_GROUP_MODE = "auto"
+    MAIL_DOMAIN_GROUP_STRATEGY = str(_c.get("mail_domain_group_strategy", "round_robin") or "round_robin").strip().lower()
+    if MAIL_DOMAIN_GROUP_STRATEGY not in {"round_robin", "exhaust_then_next"}:
+        MAIL_DOMAIN_GROUP_STRATEGY = "round_robin"
     raw_mail_domain_groups = _c.get("mail_domain_groups", [])
     if not isinstance(raw_mail_domain_groups, list):
         raw_mail_domain_groups = []

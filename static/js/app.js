@@ -755,6 +755,10 @@ createApp({
                 this.config.mail_domain_group_mode = ['auto', 'manual'].includes(String(this.config.mail_domain_group_mode || '').trim().toLowerCase())
                     ? String(this.config.mail_domain_group_mode || '').trim().toLowerCase()
                     : 'auto';
+                if (this.config.mail_domain_group_strategy === undefined) this.config.mail_domain_group_strategy = 'round_robin';
+                this.config.mail_domain_group_strategy = ['round_robin', 'exhaust_then_next'].includes(String(this.config.mail_domain_group_strategy || '').trim().toLowerCase())
+                    ? String(this.config.mail_domain_group_strategy || '').trim().toLowerCase()
+                    : 'round_robin';
                 if (!Array.isArray(this.config.mail_domain_groups)) this.config.mail_domain_groups = [];
                 this.config.mail_domain_groups = this.config.mail_domain_groups
                     .slice(0, this.config.mail_domain_group_count)
@@ -793,6 +797,9 @@ createApp({
             this.config.mail_domain_group_mode = ['auto', 'manual'].includes(String(this.config.mail_domain_group_mode || '').trim().toLowerCase())
                 ? String(this.config.mail_domain_group_mode || '').trim().toLowerCase()
                 : 'auto';
+            this.config.mail_domain_group_strategy = ['round_robin', 'exhaust_then_next'].includes(String(this.config.mail_domain_group_strategy || '').trim().toLowerCase())
+                ? String(this.config.mail_domain_group_strategy || '').trim().toLowerCase()
+                : 'round_robin';
             if (!Array.isArray(this.config.mail_domain_groups)) {
                 this.config.mail_domain_groups = [];
             }

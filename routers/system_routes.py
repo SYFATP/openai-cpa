@@ -91,6 +91,11 @@ def _normalize_mail_domain_grouping_payload(config_data: dict) -> Optional[str]:
         group_mode = "auto"
     config_data["mail_domain_group_mode"] = group_mode
 
+    group_strategy = str(config_data.get("mail_domain_group_strategy", "round_robin") or "round_robin").strip().lower()
+    if group_strategy not in {"round_robin", "exhaust_then_next"}:
+        group_strategy = "round_robin"
+    config_data["mail_domain_group_strategy"] = group_strategy
+
     raw_groups = config_data.get("mail_domain_groups", [])
     if not isinstance(raw_groups, list):
         raw_groups = []
