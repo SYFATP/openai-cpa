@@ -191,20 +191,6 @@ def _get_mail_domain_group_label(domain: str) -> str:
     return ""
 
 
-def _debug_mail_domain_group_context(domain: str) -> str:
-    normalized = _normalize_main_domain(domain)
-    main_domains = _get_configured_main_domains()
-    groups = _get_effective_domain_groups(main_domains)
-    return (
-        f"domain={domain!r}, normalized={normalized!r}, "
-        f"enabled={getattr(cfg, 'ENABLE_MAIL_DOMAIN_GROUPING', False)!r}, "
-        f"runtime_mode={getattr(cfg, 'EMAIL_API_MODE', '')!r}, "
-        f"group_mode={getattr(cfg, 'MAIL_DOMAIN_GROUP_MODE', '')!r}, "
-        f"strategy={getattr(cfg, 'MAIL_DOMAIN_GROUP_STRATEGY', '')!r}, "
-        f"main_domains={main_domains!r}, groups={groups!r}"
-    )
-
-
 def _format_grouped_mail_log(label: str, email: str) -> str:
     group_label = _get_mail_domain_group_label(label)
     masked_email = mask_email(email)
@@ -1359,9 +1345,6 @@ def get_email_and_token(
                     email = data["address"].strip()
                     jwt = data.get("jwt", "").strip()
                     set_last_email(email)
-                    print(
-                        f"[{cfg.ts()}] [DEBUG] 域名分组上下文: {_debug_mail_domain_group_context(selected_domain)}"
-                    )
                     print(
                         f"[{cfg.ts()}] [INFO] cloudflare_temp_email成功获取临时邮箱: {_format_grouped_mail_log(selected_domain, email)}"
                     )
